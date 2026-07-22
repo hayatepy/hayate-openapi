@@ -1,11 +1,66 @@
 # hayate-openapi
 
-OpenAPI 3.1 (= JSON Schema 2020-12) generation for
-[hayate](https://github.com/hayatepy/hayate), driven by the validator middleware.
+OpenAPI 3.1 generation for [hayate](https://github.com/hayatepy/hayate) —
+built from what your app already knows: routes from `app.routes`, request
+schemas from your validators, response schemas from one decorator. No magic
+inference, no schema-library lock-in.
 
-> **Status: design phase.** Greenlit 2026-07-23 (the third leg of the
-> auth + MCP + OpenAPI adoption set); the design memo lands next.
-> Internal design memos are Japanese per project convention.
+> **Status: alpha (0.1.x).** The emitted document passes the official
+> `openapi-spec-validator` and feeds `openapi-typescript` for end-to-end
+> TypeScript types. The internal design memo (Japanese, per project
+> convention) lives in [DESIGN.md](DESIGN.md).
+
+```python
+from hayate import Hayate
+from hayate_openapi import OpenApi, describe, validated
+import msgspec
+
+class BookIn(msgspec.Struct):
+    title: str
+
+app = Hayate()
+
+@app.post("/books", validated("json", BookIn))   # validator + schema tag in one
+@describe(status=201, summary="Create a book")
+async def create(c):
+    book = c.req.valid("json")     # BookIn instance — validation still runs
+    return c.json({"title": book.title}, status=201)
+
+OpenApi(app, title="Bookstore", version="1.0.0").register(app)
+# GET /openapi.json is live; or emit statically:
+#   python -m hayate_openapi main:app --title Bookstore --version 1.0.0
+```
+
+## How it works
+
+| Source | What it provides |
+|---|---|
+| `app.routes` (hayate ≥ 0.8) | every method + path, converted to OpenAPI templating (`:id` → `{id}`) |
+| `validated(target, T)` | request body / query / form schemas — a tagging wrapper around the core `validator`, behavior-identical |
+| `@describe(...)` | summary, tags, response schemas, operationId — all optional, all additive |
+
+Schema conversion goes through a `SchemaProvider` protocol. msgspec and
+pydantic are auto-detected (guarded imports); a plain dict is taken as
+literal JSON Schema. **The package itself depends only on hayate.**
+
+TypeScript types, the recommended recipe:
+
+```sh
+python -m hayate_openapi main:app --title API --version 1.0.0 -o openapi.json
+npx openapi-typescript openapi.json -o src/api-types.ts
+```
+
+Docs UI: serve the JSON and point any renderer at it — e.g. one line of
+[Scalar](https://github.com/scalar/scalar) or Redoc HTML. Nothing is bundled.
+
+## What is documented (and what is not)
+
+- Routes with real HTTP verbs; WebSocket routes and wildcard mounts
+  (`/api/auth/*`) are skipped.
+- Responses you declare. Undeclared operations get a bare 200 — the
+  generator never invents schemas.
+- Operations with a validator automatically document the 400
+  `application/problem+json` failure the framework actually returns.
 
 ## License
 

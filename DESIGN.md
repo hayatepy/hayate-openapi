@@ -99,7 +99,8 @@ class SchemaProvider(Protocol):
 ### 3.3 パス変換(決定)
 
 - `:name` → `{name}`(path parameter、required、schema は string 既定)。
-- 正規表現制約 `:id{[0-9]+}` は `{id}` に落とし、制約は `schema.pattern` に転記。
+- 正規表現制約 `:id([0-9]+)`(URLPattern の丸括弧構文)は `{id}` に落とし、
+  制約は `schema.pattern` に転記。
 - `*`(ワイルドカード)と WebSocket ルートは **ドキュメント対象外**(スキップ)。
   auth の `/api/auth/*` のような mount はそれ自身が API 文書を持つ(将来 §7)。
 - query は `validated("query", T)` から object スキーマを property 単位の
@@ -138,7 +139,7 @@ class SchemaProvider(Protocol):
 
 | 版 | 内容 | 受け入れ基準 |
 |---|---|---|
-| **v0.1** | generate() + validated() + describe() + `/openapi.json` mount + CLI(`python -m hayate_openapi app:app`) | 生成 JSON が **openapi-spec-validator を通過**し、**openapi-typescript が型を生成できる**。msgspec / pydantic / 生 dict の 3 provider がテストで通る |
+| ~~**v0.1**~~ | **完了(2026-07-23)**: generate() + validated() + describe() + mount + CLI | ✅ openapi-spec-validator 通過(テスト常設)。✅ openapi-typescript 7.13 が CLI 出力から型生成(実測 44.6ms)。✅ 3 provider テスト通過(13 テスト)。実装メモ: URLPattern の regex 構文は丸括弧 `:id([0-9]+)`(§5 修正済み)、WS ルートは HTTP メソッドのホワイトリストで除外 |
 | v0.2 | security schemes(hayate-auth のエンドポイント記述との合流)+ examples | auth をマウントしたアプリの文書に認証が正しく載る |
 | v1.0 | API 凍結 | 本体 v1.0 より後 |
 

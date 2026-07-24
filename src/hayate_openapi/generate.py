@@ -20,6 +20,7 @@ from .tags import OPENAPI_ATTR
 OPENAPI_VERSION = "3.1.1"
 
 _PARAM_RE = re.compile(r":(\w+)(\([^)]*\))?")
+_PATH_TEMPLATE_PARAM_RE = re.compile(r"\{[^{}]+\}")
 # Only real HTTP verbs become operations; hayate's websocket routes use an
 # internal marker method and are not documentable in OpenAPI.
 _HTTP_METHODS = frozenset({"GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS", "TRACE"})
@@ -77,6 +78,8 @@ class OpenApi:
     def generate(self) -> dict[str, Any]:
         paths: dict[str, dict[str, Any]] = {}
         schemas: dict[str, Any] = {}
+        template_paths: dict[str, str] = {}
+        operation_ids: set[str] = set()
 
         for route in self.app.routes:
             if route.method not in _HTTP_METHODS:
@@ -85,8 +88,23 @@ class OpenApi:
             if converted is None:
                 continue
             path, path_params = converted
+            template_path = _PATH_TEMPLATE_PARAM_RE.sub("{}", path)
+            existing_path = template_paths.setdefault(template_path, path)
+            if existing_path != path:
+                raise ValueError(
+                    f"OpenAPI cannot distinguish templated paths {existing_path!r} and {path!r}"
+                )
+            method = route.method.lower()
+            if method in paths.get(path, {}):
+                raise ValueError(f"duplicate OpenAPI operation for {route.method} {path}")
             operation = self._operation(route, path, path_params, schemas)
-            paths.setdefault(path, {})[route.method.lower()] = operation
+            operation_id = operation["operationId"]
+            if not isinstance(operation_id, str) or not operation_id:
+                raise ValueError("OpenAPI operationId must be a non-empty string")
+            if operation_id in operation_ids:
+                raise ValueError(f"duplicate OpenAPI operationId {operation_id!r}")
+            operation_ids.add(operation_id)
+            paths.setdefault(path, {})[method] = operation
 
         document: dict[str, Any] = {
             "openapi": OPENAPI_VERSION,
@@ -179,7 +197,11 @@ class OpenApi:
     def _register_schema(self, type_: Any, components: dict[str, Any]) -> dict[str, Any]:
         provider = resolve(self.providers, type_)
         schema, defs = provider.schema(type_)
-        components.update(defs)
+        for name, definition in defs.items():
+            existing = components.get(name, _MISSING)
+            if existing is not _MISSING and existing != definition:
+                raise ValueError(f"conflicting OpenAPI component schema {name!r}")
+            components[name] = definition
         return schema
 
     def _query_parameters(
@@ -216,3 +238,6 @@ def _status_text(status: int) -> str:
         return http.HTTPStatus(status).phrase
     except ValueError:
         return "Response"
+
+
+_MISSING = object()

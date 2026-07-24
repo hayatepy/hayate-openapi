@@ -5,12 +5,12 @@ built from what your app already knows: routes from `app.routes`, request
 schemas from your validators, response schemas from one decorator. No magic
 inference, no schema-library lock-in.
 
-> **Status: alpha (0.1.x).** The emitted document passes the official
+> **Status: alpha (0.2.x).** The emitted document passes the official
 > `openapi-spec-validator` and feeds `openapi-typescript` for end-to-end
 > TypeScript types. The internal design memo (Japanese, per project
 > convention) lives in [DESIGN.md](DESIGN.md).
-> Version 0.1.1 also aligns package metadata and the protected release path;
-> the OpenAPI surface is unchanged from 0.1.0.
+> Security schemes, multipart uploads, and strict inline typing are included.
+> Release history is in [CHANGELOG.md](CHANGELOG.md).
 
 ```python
 from hayate import Hayate
@@ -41,6 +41,25 @@ OpenApi(app, title="Bookstore", version="1.0.0").register(app)
 | `validated(target, T)` | request body / query / form schemas — a tagging wrapper around the core `validator`, behavior-identical |
 | `@describe(...)` | summary, tags, response schemas, operationId — all optional, all additive |
 
+hayate-auth middleware can supply operation security automatically:
+
+```python
+@app.get("/documents", auth.require_oauth_token("documents:read"))
+async def documents(c):
+    return c.json([])
+
+OpenApi(
+    app,
+    title="API",
+    version="1",
+    security_schemes=auth.openapi_security_schemes(),
+).register(app)
+```
+
+Use `@describe(security=[])` for an explicitly public operation. For uploads,
+combine `validated("form", schema, media_type="multipart/form-data")` with
+`binary_file()` in a raw schema.
+
 Schema conversion goes through a `SchemaProvider` protocol. msgspec and
 pydantic are auto-detected (guarded imports); a plain dict is taken as
 literal JSON Schema. **The package itself depends only on hayate.**
@@ -63,6 +82,10 @@ Docs UI: serve the JSON and point any renderer at it — e.g. one line of
   generator never invents schemas.
 - Operations with a validator automatically document the 400
   `application/problem+json` failure the framework actually returns.
+- Cookie, Bearer, and OAuth 2.0 security requirements, including combined
+  route middleware requirements.
+- JSON, URL-encoded, and multipart request bodies, including binary file
+  parts.
 
 ## License
 

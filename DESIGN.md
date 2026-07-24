@@ -140,7 +140,7 @@ class SchemaProvider(Protocol):
 | 版 | 内容 | 受け入れ基準 |
 |---|---|---|
 | ~~**v0.1**~~ | **完了(2026-07-23)**: generate() + validated() + describe() + mount + CLI | ✅ openapi-spec-validator 通過(テスト常設)。✅ openapi-typescript 7.13 が CLI 出力から型生成(実測 44.6ms)。✅ 3 provider テスト通過(13 テスト)。実装メモ: URLPattern の regex 構文は丸括弧 `:id([0-9]+)`(§5 修正済み)、WS ルートは HTTP メソッドのホワイトリストで除外 |
-| v0.2 | security schemes(hayate-auth のエンドポイント記述との合流)+ examples | auth をマウントしたアプリの文書に認証が正しく載る |
+| v0.2 | **完了(2026-07-24)**: cookie/Bearer/OAuth2 security schemes、auth middleware からの operation security 推論、public override、multipart + binary file、`py.typed` | auth をマウントした文書の security と upload schema を official validator で検証。17 tests + strict mypy 6 files ✅ |
 | v1.0 | API 凍結 | 本体 v1.0 より後 |
 
 ### 決定済み(2026-07-23)

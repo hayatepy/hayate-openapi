@@ -66,6 +66,18 @@ def test_raw_dict_schema_passes_through():
     assert schema == {"type": "object", "required": ["x"]}
 
 
+def test_multipart_binary_file_request_body():
+    op = generate()["paths"]["/uploads"]["post"]
+    content = op["requestBody"]["content"]
+    assert "application/x-www-form-urlencoded" not in content
+    schema = content["multipart/form-data"]["schema"]
+    assert schema["properties"]["file"] == {
+        "type": "string",
+        "format": "binary",
+        "description": "PDF or image",
+    }
+
+
 def test_undescribed_route_gets_default_response_only():
     op = generate()["paths"]["/books/{id}"]["get"]
     assert op["responses"]["200"]["content"]["application/json"]["schema"]

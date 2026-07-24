@@ -2,7 +2,7 @@ import msgspec
 import pydantic
 from hayate import Context, Hayate
 
-from hayate_openapi import OpenApi, describe, validated
+from hayate_openapi import OpenApi, binary_file, describe, validated
 
 
 class BookIn(msgspec.Struct):
@@ -49,6 +49,24 @@ def build_app() -> Hayate:
     @app.post("/raw", validated("json", {"type": "object", "required": ["x"]}))
     async def raw(c: Context):
         return c.json({})
+
+    @app.post(
+        "/uploads",
+        validated(
+            "form",
+            {
+                "type": "object",
+                "properties": {
+                    "file": binary_file(description="PDF or image"),
+                    "title": {"type": "string"},
+                },
+                "required": ["file"],
+            },
+            media_type="multipart/form-data",
+        ),
+    )
+    async def upload(c: Context):
+        return c.json({}, 201)
 
     @app.get("/plain/:kind([a-z]+)")
     async def plain(c: Context):

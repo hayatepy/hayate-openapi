@@ -5,20 +5,23 @@ handler. Both are additive — untagged routes still document (thinly).
 
 from __future__ import annotations
 
-from typing import Any
+from collections.abc import Callable
+from typing import Any, Literal, cast
 
 from hayate import Middleware, validator
 
 from .providers import SchemaProvider, default_providers, resolve
 
 OPENAPI_ATTR = "__openapi__"
+type ValidationTarget = Literal["json", "form", "query"]
 
 
 def validated(
-    target: str,
+    target: ValidationTarget,
     type_: Any,
     *,
     providers: list[SchemaProvider] | None = None,
+    media_type: str | None = None,
 ) -> Middleware:
     """``hayate.validator`` plus an OpenAPI tag.
 
@@ -28,11 +31,16 @@ def validated(
     chain = providers if providers is not None else default_providers()
     provider = resolve(chain, type_)
     middleware = validator(target, provider.converter(type_))
-    middleware.__openapi__ = {"target": target, "type": type_}  # type: ignore[attr-defined]
+    metadata_target = cast(Any, middleware)
+    metadata_target.__openapi__ = {
+        "target": target,
+        "type": type_,
+        "media_type": media_type,
+    }
     return middleware
 
 
-def describe(
+def describe[F: Callable[..., Any]](
     *,
     summary: str | None = None,
     description: str | None = None,
@@ -42,7 +50,8 @@ def describe(
     responses: dict[int, Any] | None = None,
     operation_id: str | None = None,
     deprecated: bool = False,
-):
+    security: list[dict[str, list[str]]] | None = None,
+) -> Callable[[F], F]:
     """Attach OpenAPI operation metadata to a handler (all fields optional).
 
     ``response=T, status=201`` is sugar for ``responses={201: T}``; use
@@ -52,15 +61,22 @@ def describe(
     if response is not None or (responses is None and status != 200):
         merged.setdefault(status, response)
 
-    def wrap(handler):
-        handler.__openapi__ = {
+    def wrap(handler: F) -> F:
+        metadata_target = cast(Any, handler)
+        metadata_target.__openapi__ = {
             "summary": summary,
             "description": description,
             "tags": tags,
             "responses": merged,
             "operation_id": operation_id,
             "deprecated": deprecated,
+            "security": security,
         }
         return handler
 
     return wrap
+
+
+def binary_file(**schema: Any) -> dict[str, Any]:
+    """A file part in ``multipart/form-data`` (OpenAPI binary string)."""
+    return {"type": "string", "format": "binary", **schema}

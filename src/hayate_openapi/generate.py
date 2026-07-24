@@ -8,11 +8,13 @@ so ``generate()`` is trivially testable and the mounted endpoint is just
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping
 from typing import Any
 
 from hayate import Context, Response
 
 from .providers import SchemaProvider, default_providers, resolve
+from .security import SecurityRequirement, SecurityScheme
 from .tags import OPENAPI_ATTR
 
 OPENAPI_VERSION = "3.1.1"
@@ -58,6 +60,8 @@ class OpenApi:
         description: str | None = None,
         path: str = "/openapi.json",
         providers: list[SchemaProvider] | None = None,
+        security_schemes: Mapping[str, SecurityScheme] | None = None,
+        security: list[SecurityRequirement] | None = None,
     ) -> None:
         self.app = app
         self.title = title
@@ -65,12 +69,14 @@ class OpenApi:
         self.description = description
         self.path = path
         self.providers = providers if providers is not None else default_providers()
+        self.security_schemes = dict(security_schemes or {})
+        self.security = security
 
     # -- generation --------------------------------------------------------------------
 
     def generate(self) -> dict[str, Any]:
         paths: dict[str, dict[str, Any]] = {}
-        components: dict[str, Any] = {}
+        schemas: dict[str, Any] = {}
 
         for route in self.app.routes:
             if route.method not in _HTTP_METHODS:
@@ -79,7 +85,7 @@ class OpenApi:
             if converted is None:
                 continue
             path, path_params = converted
-            operation = self._operation(route, path, path_params, components)
+            operation = self._operation(route, path, path_params, schemas)
             paths.setdefault(path, {})[route.method.lower()] = operation
 
         document: dict[str, Any] = {
@@ -89,8 +95,15 @@ class OpenApi:
         }
         if self.description is not None:
             document["info"]["description"] = self.description
+        components: dict[str, Any] = {}
+        if schemas:
+            components["schemas"] = schemas
+        if self.security_schemes:
+            components["securitySchemes"] = self.security_schemes
         if components:
-            document["components"] = {"schemas": components}
+            document["components"] = components
+        if self.security is not None:
+            document["security"] = self.security
         return document
 
     def _operation(
@@ -110,10 +123,16 @@ class OpenApi:
                 operation[key] = meta[key]
         if meta.get("deprecated"):
             operation["deprecated"] = True
+        explicit_security = meta.get("security")
+        if explicit_security is not None:
+            operation["security"] = explicit_security
 
         parameters = list(path_params)
         has_validator = False
+        inferred_security: dict[str, list[str]] = {}
         for middleware in route.middleware:
+            for requirement in getattr(middleware, "__openapi_security__", ()):
+                inferred_security.update(requirement)
             tag = getattr(middleware, OPENAPI_ATTR, None)
             if tag is None:
                 continue
@@ -126,13 +145,16 @@ class OpenApi:
                     "content": {"application/json": {"schema": schema}},
                 }
             elif target == "form":
+                media_type = tag.get("media_type") or "application/x-www-form-urlencoded"
                 operation["requestBody"] = {
                     "required": True,
-                    "content": {"application/x-www-form-urlencoded": {"schema": schema}},
+                    "content": {media_type: {"schema": schema}},
                 }
             else:  # query: expand an object schema into individual parameters
                 parameters.extend(self._query_parameters(schema, components))
 
+        if explicit_security is None and inferred_security:
+            operation["security"] = [inferred_security]
         if parameters:
             operation["parameters"] = parameters
 
@@ -174,7 +196,8 @@ class OpenApi:
     def _deref(schema: dict[str, Any], components: dict[str, Any]) -> dict[str, Any]:
         ref = schema.get("$ref", "")
         if ref.startswith("#/components/schemas/"):
-            return components.get(ref.rsplit("/", 1)[1], {})
+            resolved = components.get(ref.rsplit("/", 1)[1], {})
+            return resolved if isinstance(resolved, dict) else {}
         return schema
 
     # -- mounting ----------------------------------------------------------------------

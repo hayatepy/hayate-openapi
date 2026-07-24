@@ -9,6 +9,8 @@ inference, no schema-library lock-in.
 > `openapi-spec-validator` and feeds `openapi-typescript` for end-to-end
 > TypeScript types. The internal design memo (Japanese, per project
 > convention) lives in [DESIGN.md](DESIGN.md).
+> Version 0.1.1 also aligns package metadata and the protected release path;
+> the OpenAPI surface is unchanged from 0.1.0.
 
 ```python
 from hayate import Hayate

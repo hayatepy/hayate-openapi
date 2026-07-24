@@ -17,6 +17,10 @@ All notable changes to hayate-openapi are documented here.
 - Preserve decorated handler types through `@describe`.
 - Validate generated security and multipart documents with the official
   OpenAPI validator.
+- Reject duplicate operations, ambiguous path templates, duplicate operation
+  IDs, and conflicting component names instead of emitting misleading specs.
+- Audit locked dependencies on every change and publish an SPDX SBOM plus
+  GitHub build and SBOM attestations with each release.
 
 ## [0.1.1] - 2026-07-24
 

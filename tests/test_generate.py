@@ -1,6 +1,13 @@
 """The generator: paths, operations, schemas, and the exclusion rules."""
 
+from types import SimpleNamespace
+
+import msgspec
+import pytest
+from hayate import Context, Hayate
+
 from conftest import build_app, generate
+from hayate_openapi import OpenApi, describe, validated
 
 
 def test_document_skeleton():
@@ -101,8 +108,6 @@ async def test_validated_still_validates():
 
 
 async def test_mounted_endpoint_serves_the_document():
-    from hayate_openapi import OpenApi
-
     app = build_app()
     OpenApi(app, title="Mounted", version="1").register(app)
     res = await app.request("/openapi.json")
@@ -111,3 +116,62 @@ async def test_mounted_endpoint_serves_the_document():
     assert doc["info"]["title"] == "Mounted"
     # The document documents itself last (registered after the fixture routes).
     assert "/openapi.json" in doc["paths"]
+
+
+def test_duplicate_method_and_path_is_rejected_instead_of_silently_overwritten():
+    async def handler(c: Context):
+        return c.text("response")
+
+    route = SimpleNamespace(method="GET", pattern="/duplicate", handler=handler, middleware=())
+    app = SimpleNamespace(routes=[route, route])
+    with pytest.raises(ValueError, match="duplicate OpenAPI operation"):
+        OpenApi(app, title="Collisions", version="1").generate()
+
+
+def test_equivalent_templated_paths_are_rejected_as_openapi_requires():
+    app = Hayate()
+
+    @app.get("/items/:id")
+    async def by_id(c: Context):
+        return c.text("id")
+
+    @app.post("/items/:name")
+    async def by_name(c: Context):
+        return c.text("name")
+
+    with pytest.raises(ValueError, match="cannot distinguish templated paths"):
+        OpenApi(app, title="Collisions", version="1").generate()
+
+
+def test_duplicate_operation_ids_are_rejected():
+    app = Hayate()
+
+    @app.get("/first")
+    @describe(operation_id="same")
+    async def first(c: Context):
+        return c.text("first")
+
+    @app.get("/second")
+    @describe(operation_id="same")
+    async def second(c: Context):
+        return c.text("second")
+
+    with pytest.raises(ValueError, match="duplicate OpenAPI operationId"):
+        OpenApi(app, title="Collisions", version="1").generate()
+
+
+def test_conflicting_component_names_are_rejected():
+    first_payload = msgspec.defstruct("Payload", [("first", str)])
+    second_payload = msgspec.defstruct("Payload", [("second", int)])
+    app = Hayate()
+
+    @app.post("/first", validated("json", first_payload))
+    async def first(c: Context):
+        return c.text("first")
+
+    @app.post("/second", validated("json", second_payload))
+    async def second(c: Context):
+        return c.text("second")
+
+    with pytest.raises(ValueError, match="conflicting OpenAPI component schema"):
+        OpenApi(app, title="Collisions", version="1").generate()

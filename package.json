@@ -1,0 +1,16 @@
+{
+  "name": "hayate-openapi-conformance",
+  "private": true,
+  "description": "Locked tooling for hayate-openapi interoperability checks",
+  "devDependencies": {
+    "openapi-typescript": "7.13.0"
+  },
+  "overrides": {
+    "openapi-typescript": {
+      "@redocly/openapi-core": {
+        "js-yaml": "4.3.0",
+        "minimatch": "10.2.5"
+      }
+    }
+  }
+}

@@ -2,6 +2,20 @@
 
 All notable changes to hayate-openapi are documented here.
 
+## Unreleased
+
+### Added
+
+- Add a locked CI interoperability gate that emits a representative OpenAPI
+  3.1.1 document, validates it, and generates TypeScript types with
+  `openapi-typescript` 7.13.0.
+
+### Changed
+
+- Document why the generator remains on the fully tested OpenAPI 3.1.1
+  interoperability profile while downstream type generation does not yet
+  advertise OpenAPI 3.2 support.
+
 ## [0.3.0] - 2026-07-25
 
 ### Added
@@ -35,8 +49,8 @@ All notable changes to hayate-openapi are documented here.
 ### Changed
 
 - Preserve decorated handler types through `@describe`.
-- Validate generated security and multipart documents with the official
-  OpenAPI validator.
+- Validate generated security and multipart documents with
+  `openapi-spec-validator`.
 - Reject duplicate operations, ambiguous path templates, duplicate operation
   IDs, and conflicting component names instead of emitting misleading specs.
 - Audit locked dependencies on every change and publish an SPDX SBOM plus

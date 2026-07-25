@@ -2,6 +2,26 @@
 
 All notable changes to hayate-openapi are documented here.
 
+## [0.3.0] - 2026-07-25
+
+### Added
+
+- Serve an interactive Scalar API reference at `/docs` by default when
+  `OpenApi.register()` mounts the OpenAPI document.
+- Allow the docs route to be disabled or use a same-origin, self-hosted Scalar
+  script without adding a Python runtime dependency.
+
+### Security
+
+- Pin the default Scalar browser bundle to an immutable version with
+  Subresource Integrity, avoid inline JavaScript, escape all generated HTML
+  configuration, and send a restrictive Content Security Policy.
+- Disable Scalar's telemetry, external client, sharing, deployment,
+  MCP-generation, developer-tools, and AI-agent integrations in the generated
+  page.
+- Exclude the OpenAPI JSON and docs implementation routes from the generated
+  application schema.
+
 ## [0.2.0] - 2026-07-24
 
 ### Added

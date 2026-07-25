@@ -11,8 +11,9 @@
 - **OpenAPI 3.1 = JSON Schema 2020-12** なので、スキーマ変換は
   `SchemaProvider` protocol(型 → JSON Schema dict)に外部化。
   msgspec / pydantic を guarded import で自動検出し、**コアの依存は hayate のみ**。
-- 表面は 2 つ: `OpenApi(app, title=..., version=...)` を `register(app)` すると
-  `GET /openapi.json` が生え、`generate()` は dict を返す(CLI / 静的出力用)。
+- 表面は 3 つ: `OpenApi(app, title=..., version=...)` を `register(app)` すると
+  `GET /openapi.json` と対話型 `GET /docs` が生え、`generate()` は dict を返す
+  (CLI / 静的出力用)。
 
 ```python
 from hayate import Hayate, validator
@@ -113,9 +114,19 @@ class SchemaProvider(Protocol):
   無ければ `200: {description: "Successful response"}` のみ(捏造しない)。
 - エラー: validator 付き operation には `400` の Problem Details 応答を自動記載
   (`application/problem+json`、RFC 9457 — 本体が実際に返すものを書くだけ)。
-- `register(app)` は `GET /openapi.json` を追加(パス変更可)。
-  ドキュメント UI は同梱しない(却下: Swagger UI バンドル — 資産同梱は重く、
-  scalar / redoc の 1 行 HTML レシピを README に書けば足りる)。
+- `register(app)` は `GET /openapi.json` と対話型 `GET /docs` を追加(パス変更可、
+  `docs_path=None` で UI 無効化)。両方とも生成文書自身からは除外する。
+- UI は Scalar の standalone HTML API。Python/Node 依存は増やさず、browser が
+  jsDelivr から読む版を immutable URL + SRI で固定する。inline script は使わず、
+  title/config は HTML escape、既定 font fetch は無効、CSP は script origin と
+  same-origin/HTTPS API 接続だけを許可する。`scalar_script_url="/assets/scalar.js"` で
+  same-origin self-host に切替可能。telemetry と外部
+  client/share/deploy/MCP-generation/developer-tools/AI agent 導線は既定で無効にし、
+  仕様文書を第三者サービスへ送る操作を公式画面から除く。
+- **変更した判断(0.3)**: 0.1 では「UI は一行HTMLで足りる」として利用者へ委ねたが、
+  FastAPI の初回成功体験と比較すると、OpenAPI JSON があっても browser で即試せないことが
+  採用摩擦として大きい。Scalar の standalone API なら package size/依存を増やさず、
+  security boundary も小さく保てるため公式 surface に昇格した。
 
 ## 5. スコープ外(YAGNI リスト)
 
@@ -124,7 +135,7 @@ class SchemaProvider(Protocol):
 | TS / Python クライアント生成 | openapi-typescript 等の成熟ツールに接続するのが役割(roadmap 非目標) |
 | OpenAPI 3.0.x 出力 | JSON Schema 方言が別物。3.1 のみ |
 | webhooks / callbacks / links | 証拠駆動で待つ |
-| リクエスト実行 UI(try-it) | ドキュメント UI 自体を同梱しない |
+| renderer asset の package 同梱 | Python wheel と依存グラフを肥大化させず、既定は SRI 固定 CDN、必要なら same-origin self-host |
 | ランタイムのレスポンス検証 | 生成器はドキュメントを書くだけ。検証は validator の役割 |
 
 ## 6. リスクと対応
@@ -141,6 +152,7 @@ class SchemaProvider(Protocol):
 |---|---|---|
 | ~~**v0.1**~~ | **完了(2026-07-23)**: generate() + validated() + describe() + mount + CLI | ✅ openapi-spec-validator 通過(テスト常設)。✅ openapi-typescript 7.13 が CLI 出力から型生成(実測 44.6ms)。✅ 3 provider テスト通過(13 テスト)。実装メモ: URLPattern の regex 構文は丸括弧 `:id([0-9]+)`(§5 修正済み)、WS ルートは HTTP メソッドのホワイトリストで除外 |
 | v0.2 | **完了(2026-07-24)**: cookie/Bearer/OAuth2 security schemes、auth middleware からの operation security 推論、public override、multipart + binary file、`py.typed` | auth をマウントした文書の security と upload schema を official validator で検証。17 tests + strict mypy 6 files ✅ |
+| v0.3 | **完了(2026-07-25)**: Scalar 対話型 docs(`/docs`)、SRI/CSP/XSS hardening、self-host/disable、内部 route の schema 除外 | 31 tests + strict mypy/ruff ✅。実 browser で描画 → path parameter 入力 → Test Request → hayate endpoint の 200 JSON を一周、console/CSP error 0 ✅ |
 | v1.0 | API 凍結 | 本体 v1.0 より後 |
 
 ### 決定済み(2026-07-23)

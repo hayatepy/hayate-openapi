@@ -7,9 +7,12 @@ so ``generate()`` is trivially testable and the mounted endpoint is just
 
 from __future__ import annotations
 
+import html
+import json
 import re
 from collections.abc import Mapping
 from typing import Any
+from urllib.parse import urlsplit
 
 from hayate import Context, Response
 
@@ -19,8 +22,12 @@ from .tags import OPENAPI_ATTR
 
 OPENAPI_VERSION = "3.1.1"
 
+_SCALAR_SCRIPT_URL = "https://cdn.jsdelivr.net/npm/@scalar/api-reference@1.63.0"
+_SCALAR_SCRIPT_INTEGRITY = "sha384-bnRzGcRYqM9jbXxeIbNDWWD8mNMY0p8qvmfAyfcT5S7/I6E7bsyLprA0uIP2gUu7"
+_OPENAPI_EXCLUDE_ATTR = "__hayate_openapi_exclude__"
 _PARAM_RE = re.compile(r":(\w+)(\([^)]*\))?")
 _PATH_TEMPLATE_PARAM_RE = re.compile(r"\{[^{}]+\}")
+_HTTPS_HOST_RE = re.compile(r"^[A-Za-z0-9.-]+$")
 # Only real HTTP verbs become operations; hayate's websocket routes use an
 # internal marker method and are not documentable in OpenAPI.
 _HTTP_METHODS = frozenset({"GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS", "TRACE"})
@@ -60,15 +67,25 @@ class OpenApi:
         version: str,
         description: str | None = None,
         path: str = "/openapi.json",
+        docs_path: str | None = "/docs",
+        scalar_script_url: str = _SCALAR_SCRIPT_URL,
         providers: list[SchemaProvider] | None = None,
         security_schemes: Mapping[str, SecurityScheme] | None = None,
         security: list[SecurityRequirement] | None = None,
     ) -> None:
+        if docs_path is not None:
+            if not docs_path.startswith("/") or docs_path.startswith("//"):
+                raise ValueError("docs_path must be an absolute application path")
+            if docs_path == path:
+                raise ValueError("docs_path and path must be different")
         self.app = app
         self.title = title
         self.version = version
         self.description = description
         self.path = path
+        self.docs_path = docs_path
+        self.scalar_script_url = scalar_script_url
+        self._scalar_script_source = _script_source(scalar_script_url)
         self.providers = providers if providers is not None else default_providers()
         self.security_schemes = dict(security_schemes or {})
         self.security = security
@@ -82,6 +99,8 @@ class OpenApi:
         operation_ids: set[str] = set()
 
         for route in self.app.routes:
+            if getattr(route.handler, _OPENAPI_EXCLUDE_ATTR, False):
+                continue
             if route.method not in _HTTP_METHODS:
                 continue
             converted = _convert_path(route.pattern)
@@ -228,7 +247,105 @@ class OpenApi:
         async def openapi_handler(c: Context) -> Response:
             return c.json(self.generate())
 
+        setattr(openapi_handler, _OPENAPI_EXCLUDE_ATTR, True)
         app.get(self.path)(openapi_handler)
+
+        if self.docs_path is not None:
+
+            async def docs_handler(c: Context) -> Response:
+                return c.html(
+                    self._docs_html(),
+                    headers={
+                        "cache-control": "no-store",
+                        "content-security-policy": self._docs_csp(),
+                        "referrer-policy": "no-referrer",
+                        "x-content-type-options": "nosniff",
+                    },
+                )
+
+            setattr(docs_handler, _OPENAPI_EXCLUDE_ATTR, True)
+            app.get(self.docs_path)(docs_handler)
+
+    def _docs_html(self) -> str:
+        configuration = html.escape(
+            json.dumps(
+                {
+                    "url": self.path,
+                    "withDefaultFonts": False,
+                    "showDeveloperTools": "never",
+                    "hideClientButton": True,
+                    "agent": {"disabled": True},
+                    "mcp": {"disabled": True},
+                    "telemetry": False,
+                },
+                ensure_ascii=False,
+                separators=(",", ":"),
+            ),
+            quote=True,
+        )
+        script_url = html.escape(self.scalar_script_url, quote=True)
+        title = html.escape(self.title, quote=True)
+        integrity = ""
+        if self.scalar_script_url == _SCALAR_SCRIPT_URL:
+            integrity = (
+                f'\n      integrity="{_SCALAR_SCRIPT_INTEGRITY}"\n      crossorigin="anonymous"'
+            )
+        return f"""<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{title} API reference</title>
+  </head>
+  <body>
+    <script
+      id="api-reference"
+      data-configuration="{configuration}"
+      src="{script_url}"{integrity}
+    ></script>
+    <noscript>Enable JavaScript to use the interactive API reference.</noscript>
+  </body>
+</html>
+"""
+
+    def _docs_csp(self) -> str:
+        return "; ".join(
+            (
+                "default-src 'none'",
+                f"script-src {self._scalar_script_source}",
+                "style-src 'unsafe-inline'",
+                "img-src data: https:",
+                "connect-src 'self' https:",
+                "font-src 'none'",
+                "object-src 'none'",
+                "base-uri 'none'",
+                "form-action 'none'",
+                "frame-ancestors 'none'",
+            )
+        )
+
+
+def _script_source(url: str) -> str:
+    if any(ord(character) < 0x20 or ord(character) == 0x7F for character in url):
+        raise ValueError("scalar_script_url must not contain control characters")
+    if url.startswith("/") and not url.startswith("//"):
+        return "'self'"
+
+    parsed = urlsplit(url)
+    if (
+        parsed.scheme != "https"
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.hostname is None
+        or _HTTPS_HOST_RE.fullmatch(parsed.hostname) is None
+    ):
+        raise ValueError("scalar_script_url must be root-relative or use an HTTPS origin")
+    try:
+        port = parsed.port
+    except ValueError as exc:
+        raise ValueError("scalar_script_url has an invalid port") from exc
+    suffix = f":{port}" if port is not None else ""
+    return f"https://{parsed.hostname}{suffix}"
 
 
 def _status_text(status: int) -> str:

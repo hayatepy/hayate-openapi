@@ -28,9 +28,9 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
       - run: uv sync --locked
-      - run: uv run ruff check src tests
-      - run: uv run ruff format --check src tests
-      - run: uv run mypy src
+      - run: uv run ruff check src tests examples
+      - run: uv run ruff format --check src tests examples
+      - run: uv run mypy src examples
       - run: uv run pytest -q
 
   # Supply-chain audit of these workflows (https://docs.zizmor.sh).
@@ -58,3 +58,22 @@ jobs:
       - run: uvx zizmor==1.28.0 .github/workflows
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  interoperability:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          python-version: "3.14"
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          cache: npm
+      - run: uv sync --locked
+      - run: npm ci --ignore-scripts
+      - run: npm audit --audit-level=high
+      - run: scripts/check_interoperability.sh

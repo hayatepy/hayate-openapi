@@ -1,4 +1,4 @@
-"""Acceptance bar: the emitted document passes the official spec validator."""
+"""Acceptance bar: emitted documents pass a standards-based spec validator."""
 
 from openapi_spec_validator import validate
 

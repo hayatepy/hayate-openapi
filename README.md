@@ -5,10 +5,10 @@ built from what your app already knows: routes from `app.routes`, request
 schemas from your validators, response schemas from one decorator. No magic
 inference, no schema-library lock-in.
 
-> **Status: alpha (0.3.x).** The emitted document passes the official
-> `openapi-spec-validator` and feeds `openapi-typescript` for end-to-end
-> TypeScript types. The internal design memo (Japanese, per project
-> convention) lives in [DESIGN.md](DESIGN.md).
+> **Status: alpha (0.3.x).** The emitted OpenAPI 3.1.1 document passes
+> `openapi-spec-validator` and feeds `openapi-typescript` 7.13 for end-to-end
+> TypeScript types in a locked CI interoperability gate. The internal design
+> memo (Japanese, per project convention) lives in [DESIGN.md](DESIGN.md).
 > Interactive Scalar docs, security schemes, multipart uploads, and strict
 > inline typing are included. Release history is in
 > [CHANGELOG.md](CHANGELOG.md).
@@ -71,6 +71,22 @@ TypeScript types, the recommended recipe:
 python -m hayate_openapi main:app --title API --version 1.0.0 -o openapi.json
 npx openapi-typescript openapi.json -o src/api-types.ts
 ```
+
+The repository continuously runs the same flow against a representative app:
+
+```sh
+npm ci --ignore-scripts
+scripts/check_interoperability.sh
+```
+
+The generator deliberately emits OpenAPI 3.1.1. Although
+[OpenAPI 3.2.0](https://spec.openapis.org/oas/v3.2.0.html) is published,
+[`openapi-typescript` documents support](https://openapi-ts.dev/introduction)
+for 3.0 and 3.1. Staying on 3.1.1 keeps validation, documentation, and typed
+client generation on one tested interoperability profile instead of claiming
+an unverified version bump. The private Node lock overrides vulnerable
+transitive parser/glob versions with patched releases; it is CI tooling and is
+not part of the Python distribution.
 
 ## Interactive API reference
 

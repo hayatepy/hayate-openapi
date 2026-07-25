@@ -1,6 +1,7 @@
 """The generator: paths, operations, schemas, and the exclusion rules."""
 
 from types import SimpleNamespace
+from typing import Any
 
 import msgspec
 import pytest
@@ -114,8 +115,85 @@ async def test_mounted_endpoint_serves_the_document():
     assert res.status == 200
     doc = await res.json()
     assert doc["info"]["title"] == "Mounted"
-    # The document documents itself last (registered after the fixture routes).
-    assert "/openapi.json" in doc["paths"]
+    assert "/openapi.json" not in doc["paths"]
+    assert "/docs" not in doc["paths"]
+
+
+async def test_mounted_endpoint_serves_hardened_interactive_docs():
+    app = build_app()
+    OpenApi(app, title='Mounted <script>alert("xss")</script>', version="1").register(app)
+
+    res = await app.request("/docs")
+    body = await res.text()
+
+    assert res.status == 200
+    assert res.headers.get("content-type") == "text/html;charset=utf-8"
+    assert res.headers.get("cache-control") == "no-store"
+    assert res.headers.get("referrer-policy") == "no-referrer"
+    assert res.headers.get("x-content-type-options") == "nosniff"
+    csp = res.headers.get("content-security-policy")
+    assert csp is not None
+    assert "default-src 'none'" in csp
+    assert "script-src https://cdn.jsdelivr.net" in csp
+    assert "frame-ancestors 'none'" in csp
+
+    assert body.count("<script") == 1
+    assert 'id="api-reference"' in body
+    assert "https://cdn.jsdelivr.net/npm/@scalar/api-reference@1.63.0" in body
+    assert 'integrity="sha384-' in body
+    assert 'crossorigin="anonymous"' in body
+    assert "&quot;url&quot;:&quot;/openapi.json&quot;" in body
+    assert "&quot;withDefaultFonts&quot;:false" in body
+    assert "&quot;showDeveloperTools&quot;:&quot;never&quot;" in body
+    assert "&quot;hideClientButton&quot;:true" in body
+    assert "&quot;agent&quot;:{&quot;disabled&quot;:true}" in body
+    assert "&quot;mcp&quot;:{&quot;disabled&quot;:true}" in body
+    assert "&quot;telemetry&quot;:false" in body
+    assert '<script>alert("xss")</script>' not in body
+    assert "&lt;script&gt;alert(&quot;xss&quot;)&lt;/script&gt;" in body
+    assert "<noscript>" in body
+
+
+async def test_interactive_docs_can_be_disabled():
+    app = build_app()
+    OpenApi(app, title="Mounted", version="1", docs_path=None).register(app)
+
+    assert (await app.request("/openapi.json")).status == 200
+    assert (await app.request("/docs")).status == 404
+
+
+async def test_interactive_docs_support_same_origin_self_hosting():
+    app = build_app()
+    OpenApi(
+        app,
+        title="Mounted",
+        version="1",
+        scalar_script_url="/assets/scalar.js",
+    ).register(app)
+
+    res = await app.request("/docs")
+    body = await res.text()
+    assert 'src="/assets/scalar.js"' in body
+    assert "integrity=" not in body
+    assert "script-src 'self'" in (res.headers.get("content-security-policy") or "")
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"docs_path": "docs"},
+        {"docs_path": "/openapi.json"},
+        {"scalar_script_url": "//cdn.example.com/scalar.js"},
+        {"scalar_script_url": "http://cdn.example.com/scalar.js"},
+        {"scalar_script_url": "https://user@cdn.example.com/scalar.js"},
+        {"scalar_script_url": "javascript:alert(1)"},
+        {"scalar_script_url": "https://cdn.example.com/\nscalar.js"},
+    ],
+)
+def test_interactive_docs_reject_unsafe_configuration(kwargs: dict[str, Any]) -> None:
+    app = build_app()
+    with pytest.raises(ValueError):
+        OpenApi(app, title="Mounted", version="1", **kwargs)
 
 
 def test_duplicate_method_and_path_is_rejected_instead_of_silently_overwritten():

@@ -5,12 +5,13 @@ built from what your app already knows: routes from `app.routes`, request
 schemas from your validators, response schemas from one decorator. No magic
 inference, no schema-library lock-in.
 
-> **Status: alpha (0.2.x).** The emitted document passes the official
+> **Status: alpha (0.3.x).** The emitted document passes the official
 > `openapi-spec-validator` and feeds `openapi-typescript` for end-to-end
 > TypeScript types. The internal design memo (Japanese, per project
 > convention) lives in [DESIGN.md](DESIGN.md).
-> Security schemes, multipart uploads, and strict inline typing are included.
-> Release history is in [CHANGELOG.md](CHANGELOG.md).
+> Interactive Scalar docs, security schemes, multipart uploads, and strict
+> inline typing are included. Release history is in
+> [CHANGELOG.md](CHANGELOG.md).
 
 ```python
 from hayate import Hayate
@@ -29,7 +30,7 @@ async def create(c):
     return c.json({"title": book.title}, status=201)
 
 OpenApi(app, title="Bookstore", version="1.0.0").register(app)
-# GET /openapi.json is live; or emit statically:
+# GET /openapi.json and interactive GET /docs are live; or emit statically:
 #   python -m hayate_openapi main:app --title Bookstore --version 1.0.0
 ```
 
@@ -71,8 +72,36 @@ python -m hayate_openapi main:app --title API --version 1.0.0 -o openapi.json
 npx openapi-typescript openapi.json -o src/api-types.ts
 ```
 
-Docs UI: serve the JSON and point any renderer at it — e.g. one line of
-[Scalar](https://github.com/scalar/scalar) or Redoc HTML. Nothing is bundled.
+## Interactive API reference
+
+`register()` serves a [Scalar](https://github.com/scalar/scalar) API reference
+at `/docs` by default. It can execute requests, render schemas and security
+requirements, and generate client examples directly from the same OpenAPI 3.1
+document.
+
+The page has no inline JavaScript. It pins Scalar to an immutable version with
+Subresource Integrity and sends a restrictive Content Security Policy. Scalar
+is loaded from jsDelivr at browser time, while Scalar's telemetry, external
+client, sharing, deployment, MCP-generation, developer-tools, and AI-agent
+integrations are disabled by default. The Python package therefore keeps its
+single `hayate` dependency without sending the API document to another
+service. Disable the page or self-host the script when needed:
+
+```python
+# JSON only
+OpenApi(app, title="API", version="1", docs_path=None).register(app)
+
+# Same-origin, self-hosted Scalar bundle
+OpenApi(
+    app,
+    title="API",
+    version="1",
+    scalar_script_url="/assets/scalar.js",
+).register(app)
+```
+
+The OpenAPI JSON and docs routes are intentionally excluded from the generated
+application schema.
 
 ## What is documented (and what is not)
 

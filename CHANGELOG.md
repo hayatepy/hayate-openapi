@@ -4,6 +4,8 @@ All notable changes to hayate-openapi are documented here.
 
 ## Unreleased
 
+## [0.3.1] - 2026-07-26
+
 ### Added
 
 - Add a locked CI interoperability gate that emits a representative OpenAPI
@@ -15,6 +17,8 @@ All notable changes to hayate-openapi are documented here.
 - Document why the generator remains on the fully tested OpenAPI 3.1.1
   interoperability profile while downstream type generation does not yet
   advertise OpenAPI 3.2 support.
+- Link the canonical ecosystem start page, production golden app, and tested
+  compatibility evidence from the published package description.
 
 ## [0.3.0] - 2026-07-25
 

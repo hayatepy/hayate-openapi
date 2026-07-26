@@ -17,7 +17,7 @@ from .security import (
 )
 from .tags import binary_file, describe, validated
 
-__version__ = "0.3.0"
+__version__ = "0.3.1"
 
 __all__ = [
     "MsgspecProvider",

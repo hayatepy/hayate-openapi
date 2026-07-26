@@ -1,5 +1,9 @@
 # hayate-openapi
 
+> **Hayate ecosystem:** [Start here](https://github.com/hayatepy/.github/blob/main/docs/START.md)
+> · [Production golden app](https://github.com/hayatepy/golden-app)
+> · [Tested compatibility](https://github.com/hayatepy/.github/blob/main/docs/COMPATIBILITY.md)
+
 OpenAPI 3.1 generation for [hayate](https://github.com/hayatepy/hayate) —
 built from what your app already knows: routes from `app.routes`, request
 schemas from your validators, response schemas from one decorator. No magic

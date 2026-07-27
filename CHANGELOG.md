@@ -4,6 +4,21 @@ All notable changes to hayate-openapi are documented here.
 
 ## Unreleased
 
+## [0.4.0] - 2026-07-27
+
+### Added
+
+- Project `param`, `header`, and `cookie` validators into OpenAPI parameters,
+  reusing the same schema contract enforced at runtime.
+- Verify the installed distribution metadata and public `__version__` in the
+  ordinary test suite so release version drift is caught before tagging.
+
+### Changed
+
+- Reject path properties that do not exist in the route, duplicate header or
+  cookie parameters, and reserved header parameters that OpenAPI would ignore
+  instead of emitting misleading contracts.
+
 ## [0.3.1] - 2026-07-26
 
 ### Added

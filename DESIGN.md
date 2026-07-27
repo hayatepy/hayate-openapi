@@ -100,12 +100,17 @@ class SchemaProvider(Protocol):
 ### 3.3 パス変換(決定)
 
 - `:name` → `{name}`(path parameter、required、schema は string 既定)。
+  `validated("param", T)` が同名 property を持つ場合はその schema で上書きし、
+  route にない property は契約誤記として拒否する。path parameter は OpenAPI 規則により
+  schema 側が optional でも required のまま。
 - 正規表現制約 `:id([0-9]+)`(URLPattern の丸括弧構文)は `{id}` に落とし、
   制約は `schema.pattern` に転記。
 - `*`(ワイルドカード)と WebSocket ルートは **ドキュメント対象外**(スキップ)。
   auth の `/api/auth/*` のような mount はそれ自身が API 文書を持つ(将来 §7)。
-- query は `validated("query", T)` から object スキーマを property 単位の
-  query parameter 群に展開。form は requestBody(`application/x-www-form-urlencoded`)。
+- query / header / cookie は `validated(target, T)` の object スキーマを property 単位の
+  parameter 群に展開。header は Fetch が公開する lowercase 名を契約とし、OpenAPI が無視する
+  `Accept` / `Content-Type` / `Authorization` は誤解を避けるため拒否する。
+  form は requestBody(`application/x-www-form-urlencoded`)。
 
 ## 4. 出力の形(決定)
 
@@ -153,6 +158,7 @@ class SchemaProvider(Protocol):
 | ~~**v0.1**~~ | **完了(2026-07-23)**: generate() + validated() + describe() + mount + CLI | ✅ openapi-spec-validator 通過(テスト常設)。✅ openapi-typescript 7.13 が CLI 出力から型生成(CI常設)。✅ 3 provider テスト通過(13 テスト)。実装メモ: URLPattern の regex 構文は丸括弧 `:id([0-9]+)`(§5 修正済み)、WS ルートは HTTP メソッドのホワイトリストで除外 |
 | v0.2 | **完了(2026-07-24)**: cookie/Bearer/OAuth2 security schemes、auth middleware からの operation security 推論、public override、multipart + binary file、`py.typed` | auth をマウントした文書の security と upload schema を openapi-spec-validator で検証。17 tests + strict mypy 6 files ✅ |
 | v0.3 | **完了(2026-07-25)**: Scalar 対話型 docs(`/docs`)、SRI/CSP/XSS hardening、self-host/disable、内部 route の schema 除外 | 31 tests + strict mypy/ruff ✅。実 browser で描画 → path parameter 入力 → Test Request → hayate endpoint の 200 JSON を一周、console/CSP error 0 ✅ |
+| v0.4 | **完了(2026-07-27)**: `param` / `header` / `cookie` validator の OpenAPI parameter 投影、route/schema 整合性検証、version drift gate | PyPI hayate 0.12.0 のみで 37 tests、OpenAPI 3.1 validator、openapi-typescript 7.13、strict mypy/ruff ✅ |
 | v1.0 | API 凍結 | 本体 v1.0 より後 |
 
 ### 決定済み(2026-07-23)

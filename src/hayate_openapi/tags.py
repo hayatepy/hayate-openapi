@@ -13,7 +13,7 @@ from hayate import Middleware, validator
 from .providers import SchemaProvider, default_providers, resolve
 
 OPENAPI_ATTR = "__openapi__"
-type ValidationTarget = Literal["json", "form", "query"]
+type ValidationTarget = Literal["json", "form", "query", "param", "header", "cookie"]
 
 
 def validated(

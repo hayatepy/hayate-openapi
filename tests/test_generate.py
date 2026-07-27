@@ -62,6 +62,20 @@ def test_query_object_expands_to_parameters():
     assert params["limit"]["schema"]["type"] == "integer"
 
 
+def test_validated_path_header_and_cookie_expand_to_parameters():
+    op = generate()["paths"]["/validated/{id}"]["get"]
+    params = {(parameter["in"], parameter["name"]): parameter for parameter in op["parameters"]}
+    assert params[("path", "id")] == {
+        "name": "id",
+        "in": "path",
+        "required": True,
+        "schema": {"type": "string", "format": "uuid"},
+    }
+    assert params[("header", "x-request-id")]["required"] is True
+    assert params[("cookie", "theme")]["required"] is False
+    assert params[("cookie", "theme")]["schema"]["enum"] == ["light", "dark"]
+
+
 def test_pydantic_request_body():
     op = generate()["paths"]["/users"]["post"]
     schema = op["requestBody"]["content"]["application/json"]["schema"]
@@ -253,3 +267,44 @@ def test_conflicting_component_names_are_rejected():
 
     with pytest.raises(ValueError, match="conflicting OpenAPI component schema"):
         OpenApi(app, title="Collisions", version="1").generate()
+
+
+def test_path_validator_rejects_properties_not_present_in_route():
+    app = Hayate()
+
+    @app.get(
+        "/books/:id",
+        validated(
+            "param",
+            {
+                "type": "object",
+                "properties": {"slug": {"type": "string"}},
+            },
+        ),
+    )
+    async def book(c: Context):
+        return c.json({})
+
+    with pytest.raises(ValueError, match="not route parameters: slug"):
+        OpenApi(app, title="Invalid path contract", version="1").generate()
+
+
+@pytest.mark.parametrize("name", ["Accept", "authorization", "content-type"])
+def test_header_validator_rejects_openapi_ignored_parameters(name: str):
+    app = Hayate()
+
+    @app.get(
+        "/books",
+        validated(
+            "header",
+            {
+                "type": "object",
+                "properties": {name: {"type": "string"}},
+            },
+        ),
+    )
+    async def books(c: Context):
+        return c.json([])
+
+    with pytest.raises(ValueError, match="OpenAPI ignores"):
+        OpenApi(app, title="Invalid header contract", version="1").generate()

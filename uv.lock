@@ -76,22 +76,23 @@ wheels = [
 
 [[package]]
 name = "hayate"
-version = "0.12.0"
+version = "0.12.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "uts46" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/e7/8f/4660f100e1634afbba33446b9a0bfa83de267992d6d7f2ad02f7b2480ce5/hayate-0.12.0.tar.gz", hash = "sha256:c6f9f211a275bc452b19120634d4f1d7c9ae4ae799f58f0ce696f2cb1c483b5e", size = 56029, upload-time = "2026-07-27T00:23:46.46Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/6b/e2/fa2d08573aab6944e8ea451ed01fc3d1d13f107aa9dd911c72b7b4a02040/hayate-0.12.1.tar.gz", hash = "sha256:1af3b317e86cf6093d519f3a80014a25a45d4dd87eeffc4901ac7fa4350ddebd", size = 56056, upload-time = "2026-07-27T00:47:48.238Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ae/c3/d445b01311da927aee01a92ab3b208d7862167b2385358c81ec1899c433b/hayate-0.12.0-py3-none-any.whl", hash = "sha256:a52f2eb1df62a06c6fc5189812317b7336ece8bcc426cc0ac2672a42570cf10a", size = 72091, upload-time = "2026-07-27T00:23:45.213Z" },
+    { url = "https://files.pythonhosted.org/packages/4a/39/0016de1092925aea035a3be4cc62a69e9d857d178b8c529c782b723a4420/hayate-0.12.1-py3-none-any.whl", hash = "sha256:de1bc9e8c75d64795f92d9483bbe35339dc3f1cec599a3787d48b4840461f063", size = 72096, upload-time = "2026-07-27T00:47:46.926Z" },
 ]
 
 [[package]]
 name = "hayate-openapi"
-version = "0.4.0"
+version = "0.4.1"
 source = { editable = "." }
 dependencies = [
     { name = "hayate" },
+    { name = "jsonschema" },
 ]
 
 [package.dev-dependencies]
@@ -103,10 +104,14 @@ dev = [
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "ruff" },
+    { name = "types-jsonschema" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "hayate", specifier = ">=0.12.0" }]
+requires-dist = [
+    { name = "hayate", specifier = ">=0.12.1" },
+    { name = "jsonschema", specifier = ">=4.25,<5" },
+]
 
 [package.metadata.requires-dev]
 dev = [
@@ -117,6 +122,7 @@ dev = [
     { name = "pytest", specifier = ">=8.3" },
     { name = "pytest-asyncio", specifier = ">=0.25" },
     { name = "ruff", specifier = ">=0.9" },
+    { name = "types-jsonschema", specifier = ">=4.25" },
 ]
 
 [[package]]
@@ -779,6 +785,18 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/94/e7/b2c673351809dca68a0e064b6af791aa332cf192da575fd474ed7d6f16a2/six-1.17.0.tar.gz", hash = "sha256:ff70335d468e7eb6ec65b95b99d3a2836546063f63acc5171de367e834932a81", size = 34031, upload-time = "2024-12-04T17:35:28.174Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/b7/ce/149a00dd41f10bc29e5921b496af8b574d8413afcd5e30dfa0ed46c2cc5e/six-1.17.0-py2.py3-none-any.whl", hash = "sha256:4721f391ed90541fddacab5acf947aa0d3dc7d27b2e1e8eda2be8970586c3274", size = 11050, upload-time = "2024-12-04T17:35:26.475Z" },
+]
+
+[[package]]
+name = "types-jsonschema"
+version = "4.26.0.20260518"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "referencing" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/dd/46/73b6a5d61a61015c4248030a8cb07e5bdddb4041430fae9e585a68692578/types_jsonschema-4.26.0.20260518.tar.gz", hash = "sha256:e1dd53dc97a64f5eccdd6fa9839666e09bb500a8ebba2db6fdaf1789faea81a6", size = 16638, upload-time = "2026-05-18T06:06:44.106Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/07/d5/134f8a147dcecda10db7f60cfc6af0578a25a5c53c87b3907a64385e0184/types_jsonschema-4.26.0.20260518-py3-none-any.whl", hash = "sha256:30b30a518c7fe335df85c919fcbcc631b69c03d4a4b5b632fa916bea03065307", size = 16072, upload-time = "2026-05-18T06:06:43.264Z" },
 ]
 
 [[package]]

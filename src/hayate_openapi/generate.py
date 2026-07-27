@@ -253,9 +253,7 @@ class OpenApi:
         resolved = self._deref(schema, components)
         properties = resolved.get("properties")
         if resolved.get("type") not in (None, "object") or not isinstance(properties, dict):
-            raise ValueError(
-                f"{location} validator schema must be an object with named properties"
-            )
+            raise ValueError(f"{location} validator schema must be an object with named properties")
         required = set(resolved.get("required", ()))
         parameters = []
         for name, prop in properties.items():
@@ -293,9 +291,7 @@ class OpenApi:
             if parameter.get("in") == "path"
         }
         unknown = sorted(
-            parameter["name"]
-            for parameter in validated
-            if parameter["name"] not in path_parameters
+            parameter["name"] for parameter in validated if parameter["name"] not in path_parameters
         )
         if unknown:
             raise ValueError(
@@ -315,18 +311,14 @@ class OpenApi:
         keys = {
             (
                 parameter["in"],
-                parameter["name"].lower()
-                if parameter["in"] == "header"
-                else parameter["name"],
+                parameter["name"].lower() if parameter["in"] == "header" else parameter["name"],
             )
             for parameter in parameters
         }
         for parameter in additions:
             key = (
                 parameter["in"],
-                parameter["name"].lower()
-                if parameter["in"] == "header"
-                else parameter["name"],
+                parameter["name"].lower() if parameter["in"] == "header" else parameter["name"],
             )
             if key in keys:
                 raise ValueError(

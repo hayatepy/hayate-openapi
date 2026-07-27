@@ -2,6 +2,7 @@
 set -euo pipefail
 
 wheel="${1:-}"
+repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 test_dir="$(mktemp -d)"
 log_file="${test_dir}.workerd.log"
 dry_run_log="${test_dir}.dry-run.log"
@@ -46,7 +47,7 @@ fi
 
 (
   cd "${test_dir}"
-  uvx --from create-hayate==0.5.0 create-hayate \
+  uvx --from create-hayate==0.5.1 create-hayate \
     demo-app --template workers --with openapi --no-input
   cd demo-app
   uv sync
@@ -66,6 +67,7 @@ fi
     --reinstall \
     --no-deps \
     "${wheel}"
+  cp "${repo_dir}/scripts/typed_workerd_app.py" src/app.py
 
   uv run --no-sync python manage_workers.py deploy \
     --dry-run \
@@ -89,35 +91,44 @@ if [[ "${ready}" != true ]]; then
   exit 1
 fi
 
+item_id="550e8400-e29b-41d4-a716-446655440000"
 created="$(
   curl --fail --silent --show-error --max-time 10 \
-    -X POST "http://127.0.0.1:${port}/todos" \
+    -X POST "http://127.0.0.1:${port}/typed/${item_id}?repeat=2" \
     -H "content-type: application/json" \
-    --data '{"title":"workerd schema contract"}'
+    --data '{"value":"edge"}'
 )"
-todo_id="$(
-  uv run python -c \
-    'import json,sys; value=json.loads(sys.argv[1]); assert value["title"] == "workerd schema contract"; print(value["id"])' \
-    "${created}"
-)"
+uv run python -c \
+  'import json,sys; assert json.loads(sys.argv[1]) == {"item_id":sys.argv[2],"value":"edgeedge","repeat":2}' \
+  "${created}" \
+  "${item_id}"
 
 invalid_status="$(
   curl --silent --show-error --output /dev/null --write-out "%{http_code}" --max-time 10 \
-    "http://127.0.0.1:${port}/todos/not-a-uuid"
+    -X POST "http://127.0.0.1:${port}/typed/not-a-uuid" \
+    -H "content-type: application/json" \
+    --data '{"value":"edge"}'
 )"
 if [[ "${invalid_status}" != "400" ]]; then
-  echo "expected malformed UUID to return 400; got ${invalid_status}" >&2
+  echo "expected malformed typed UUID to return 400; got ${invalid_status}" >&2
   exit 1
 fi
 
-curl --fail --silent --show-error --max-time 10 \
-  "http://127.0.0.1:${port}/todos/${todo_id}" >/dev/null
+raw_invalid_status="$(
+  curl --silent --show-error --output /dev/null --write-out "%{http_code}" --max-time 10 \
+    "http://127.0.0.1:${port}/raw/not-a-uuid"
+)"
+if [[ "${raw_invalid_status}" != "400" ]]; then
+  echo "expected malformed raw-schema UUID to return 400; got ${raw_invalid_status}" >&2
+  exit 1
+fi
+
 openapi="$(
   curl --fail --silent --show-error --max-time 10 \
     "http://127.0.0.1:${port}/openapi.json"
 )"
 uv run python -c \
-  'import json,sys; document=json.loads(sys.argv[1]); parameter=document["paths"]["/todos/{id}"]["get"]["parameters"][0]; assert parameter["schema"] == {"type":"string","format":"uuid"}' \
+  'import json,sys; document=json.loads(sys.argv[1]); operation=document["paths"]["/typed/{item_id}"]["post"]; parameters={(item["in"],item["name"]):item for item in operation["parameters"]}; assert parameters[("path","item_id")]["schema"] == {"type":"string","format":"uuid"}; assert parameters[("query","repeat")]["schema"] == {"type":"integer","default":1}; assert operation["responses"]["201"]["content"]["application/json"]["schema"]["properties"]["item_id"]["format"] == "uuid"' \
   "${openapi}"
 
 upload="$(grep -F "Total Upload:" "${dry_run_log}" | tail -1)"
@@ -125,4 +136,4 @@ if [[ -z "${upload}" ]]; then
   echo "Wrangler dry-run did not report upload size" >&2
   exit 1
 fi
-echo "workerd raw-schema contract passed: ${upload}"
+echo "workerd typed and raw-schema contracts passed: ${upload}"

@@ -28,10 +28,25 @@ validate(document)
 if document.get("openapi") != "3.1.1":
     raise SystemExit(f"unexpected OpenAPI version: {document.get('openapi')!r}")
 
-expected_paths = {"/books", "/books/{book_id}", "/search", "/covers"}
+expected_paths = {
+    "/books",
+    "/books/{book_id}",
+    "/search",
+    "/covers",
+    "/typed-books/{book_id}",
+}
 missing_paths = expected_paths.difference(document.get("paths", {}))
 if missing_paths:
     raise SystemExit(f"missing representative paths: {sorted(missing_paths)}")
+
+typed = document["paths"]["/typed-books/{book_id}"]["post"]
+if typed["requestBody"]["content"]["application/json"]["schema"] == {}:
+    raise SystemExit("typed request body schema is empty")
+if typed["responses"]["201"]["content"]["application/json"]["schema"] == {}:
+    raise SystemExit("typed response schema is empty")
+parameter_locations = {(item["name"], item["in"]) for item in typed["parameters"]}
+if parameter_locations != {("book_id", "path"), ("notify", "query")}:
+    raise SystemExit(f"unexpected typed parameters: {sorted(parameter_locations)}")
 
 print("OpenAPI 3.1.1 schema and semantic validation: PASS")
 PY
@@ -44,6 +59,8 @@ fi
 node_modules/.bin/openapi-typescript "$document" --output "$types"
 grep -q '"/books"' "$types"
 grep -q 'post_books' "$types"
+grep -q '"/typed-books/{book_id}"' "$types"
+grep -q 'post_typed_books_book_id' "$types"
 test -s "$types"
 
 echo "openapi-typescript 7.13.0 generation: PASS"

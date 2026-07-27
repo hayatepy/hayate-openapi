@@ -88,11 +88,19 @@ wheels = [
 
 [[package]]
 name = "hayate-openapi"
-version = "0.4.2"
+version = "0.5.0"
 source = { editable = "." }
 dependencies = [
     { name = "hayate" },
     { name = "jsonschema" },
+]
+
+[package.optional-dependencies]
+msgspec = [
+    { name = "msgspec" },
+]
+pydantic = [
+    { name = "pydantic" },
 ]
 
 [package.dev-dependencies]
@@ -111,7 +119,10 @@ dev = [
 requires-dist = [
     { name = "hayate", specifier = ">=0.12.1" },
     { name = "jsonschema", specifier = ">=4.25,<5" },
+    { name = "msgspec", marker = "extra == 'msgspec'", specifier = ">=0.18" },
+    { name = "pydantic", marker = "extra == 'pydantic'", specifier = ">=2.9" },
 ]
+provides-extras = ["msgspec", "pydantic"]
 
 [package.metadata.requires-dev]
 dev = [

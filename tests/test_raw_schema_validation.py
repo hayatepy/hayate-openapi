@@ -2,7 +2,7 @@ import pytest
 from hayate import Context, Hayate
 from jsonschema.exceptions import SchemaError
 
-from hayate_openapi import validated
+from hayate_openapi import providers, validated
 
 
 @pytest.mark.asyncio
@@ -103,3 +103,43 @@ async def test_raw_schema_validates_every_parameter_target_and_uuid_format() -> 
 def test_invalid_raw_schema_fails_when_middleware_is_created() -> None:
     with pytest.raises(SchemaError):
         validated("json", {"type": "not-a-json-schema-type"})
+
+
+@pytest.mark.asyncio
+async def test_pyodide_defers_schema_compilation_until_first_request(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(providers.sys, "platform", "emscripten")
+    compile_raw_schema = providers._compile_raw_schema
+    calls = 0
+
+    def counted_compile(schema):
+        nonlocal calls
+        calls += 1
+        return compile_raw_schema(schema)
+
+    monkeypatch.setattr(providers, "_compile_raw_schema", counted_compile)
+    app = Hayate()
+
+    @app.post(
+        "/items",
+        validated(
+            "json",
+            {
+                "type": "object",
+                "properties": {"title": {"type": "string"}},
+                "required": ["title"],
+                "additionalProperties": False,
+            },
+        ),
+    )
+    async def create(c: Context):
+        return c.json(c.req.valid("json"))
+
+    assert calls == 0
+    first = await app.request("/items", method="POST", json={"title": "first"})
+    second = await app.request("/items", method="POST", json={"title": "second"})
+
+    assert first.status == 200
+    assert second.status == 200
+    assert calls == 1

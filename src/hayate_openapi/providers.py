@@ -9,11 +9,9 @@ wiring.
 from __future__ import annotations
 
 import contextlib
+import sys
 from collections.abc import Callable
 from typing import Any, Protocol
-
-from jsonschema import Draft202012Validator, FormatChecker
-from jsonschema.exceptions import best_match
 
 
 class SchemaProvider(Protocol):
@@ -29,6 +27,25 @@ class SchemaProvider(Protocol):
 
 
 _REF_PREFIX = "#/components/schemas/"
+
+
+def _compile_raw_schema(schema: dict[str, Any]) -> Callable[[Any], Any]:
+    # jsonschema imports rpds, whose Pyodide extension requests entropy while
+    # loading. Cloudflare Workers permits that inside a request, not while the
+    # application module is evaluated in global scope.
+    from jsonschema import Draft202012Validator, FormatChecker
+    from jsonschema.exceptions import best_match
+
+    Draft202012Validator.check_schema(schema)
+    compiled = Draft202012Validator(schema, format_checker=FormatChecker())
+
+    def validate(data: Any) -> Any:
+        error = best_match(compiled.iter_errors(data))
+        if error is not None:
+            raise ValueError(f"{error.json_path}: {error.message}")
+        return data
+
+    return validate
 
 
 class MsgspecProvider:
@@ -89,14 +106,15 @@ class RawSchemaProvider:
         return dict(type_), {}
 
     def converter(self, type_: Any) -> Callable[[Any], Any]:
-        Draft202012Validator.check_schema(type_)
-        compiled = Draft202012Validator(type_, format_checker=FormatChecker())
+        compiled = None if sys.platform == "emscripten" else _compile_raw_schema(type_)
 
         def validate(data: Any) -> Any:
-            error = best_match(compiled.iter_errors(data))
-            if error is not None:
-                raise ValueError(f"{error.json_path}: {error.message}")
-            return data
+            nonlocal compiled
+            converter = compiled
+            if converter is None:
+                converter = _compile_raw_schema(type_)
+                compiled = converter
+            return converter(data)
 
         return validate
 

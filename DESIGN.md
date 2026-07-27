@@ -91,11 +91,12 @@ class SchemaProvider(Protocol):
 ```
 
 - 既定は自動検出チェーン: msgspec(`msgspec.json.schema_components`)→
-  pydantic(`TypeAdapter(T).json_schema`)→ dict をそのまま(生 JSON Schema)。
+  pydantic(`TypeAdapter(T).json_schema`)→ dict を JSON Schema Draft 2020-12
+  として一度 compile し、format を含め request ごとに検証。
   ライブラリが無ければ該当 provider はスキップ(guarded import)。
 - `$defs` は `components/schemas` に集約し、`$ref` を書き換える。
-- **却下**: msgspec / pydantic への直接依存 — ゼロ追加依存の protocol 注入
-  (auth の Adapter / CryptoBackend と同型)。
+- **却下**: msgspec / pydantic への直接依存。生 schema の実行時契約には
+  `jsonschema` を用い、型 provider は protocol 注入のまま保つ。
 
 ### 3.3 パス変換(決定)
 

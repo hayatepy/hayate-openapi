@@ -4,6 +4,17 @@ All notable changes to hayate-openapi are documented here.
 
 ## Unreleased
 
+## [0.4.1] - 2026-07-27
+
+### Fixed
+
+- Compile raw JSON Schema contracts with the Draft 2020-12 validator and
+  format checking instead of projecting them into OpenAPI without runtime
+  enforcement. Invalid bodies, parameters, headers, and cookies now become
+  RFC 9457 validation responses through the same contract the generator emits.
+- Require Hayate 0.12.1 so route validators also run on the optimized native
+  Workers path when an application has no global middleware.
+
 ## [0.4.0] - 2026-07-27
 
 ### Added

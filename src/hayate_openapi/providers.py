@@ -1,7 +1,7 @@
 """Schema providers: type -> (JSON Schema 2020-12, referenced $defs).
 
 The chain is guarded-import autodetection (DESIGN §3.2): msgspec Structs,
-pydantic BaseModels, then raw dicts passed through untouched. Each provider
+pydantic BaseModels, then raw JSON Schemas. Each provider
 also supplies the validation converter, so ``validated()`` needs no separate
 wiring.
 """
@@ -11,6 +11,9 @@ from __future__ import annotations
 import contextlib
 from collections.abc import Callable
 from typing import Any, Protocol
+
+from jsonschema import Draft202012Validator, FormatChecker
+from jsonschema.exceptions import best_match
 
 
 class SchemaProvider(Protocol):
@@ -77,7 +80,7 @@ class PydanticProvider:
 
 
 class RawSchemaProvider:
-    """A plain dict is taken as literal JSON Schema: documented, not enforced."""
+    """A plain dict is compiled as literal JSON Schema Draft 2020-12."""
 
     def supports(self, type_: Any) -> bool:
         return isinstance(type_, dict)
@@ -86,7 +89,16 @@ class RawSchemaProvider:
         return dict(type_), {}
 
     def converter(self, type_: Any) -> Callable[[Any], Any]:
-        return lambda data: data
+        Draft202012Validator.check_schema(type_)
+        compiled = Draft202012Validator(type_, format_checker=FormatChecker())
+
+        def validate(data: Any) -> Any:
+            error = best_match(compiled.iter_errors(data))
+            if error is not None:
+                raise ValueError(f"{error.json_path}: {error.message}")
+            return data
+
+        return validate
 
 
 def default_providers() -> list[SchemaProvider]:

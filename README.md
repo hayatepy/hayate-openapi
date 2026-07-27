@@ -67,7 +67,9 @@ combine `validated("form", schema, media_type="multipart/form-data")` with
 
 Schema conversion goes through a `SchemaProvider` protocol. msgspec and
 pydantic are auto-detected (guarded imports); a plain dict is taken as
-literal JSON Schema. **The package itself depends only on hayate.**
+literal JSON Schema Draft 2020-12 and compiled once for runtime validation,
+including supported `format` checks such as UUID. The package depends on
+Hayate and `jsonschema`; msgspec and pydantic remain optional.
 
 `validated()` supports the core's six targets: `json`, `form`, `query`,
 `param`, `header`, and `cookie`. The last four expand object properties into

@@ -8,6 +8,19 @@ from typing import Any
 
 
 @dataclass(frozen=True, slots=True)
+class Constraints:
+    """Dependency-free JSON Schema constraints for ``typing.Annotated``."""
+
+    gt: int | float | None = None
+    ge: int | float | None = None
+    lt: int | float | None = None
+    le: int | float | None = None
+    min_length: int | None = None
+    max_length: int | None = None
+    pattern: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class Body:
     """Bind the JSON request body to the annotated parameter."""
 
@@ -70,4 +83,4 @@ class Depends:
 type RequestMarker = Body | Form | Query | Path | Header | Cookie
 
 
-__all__ = ["Body", "Cookie", "Depends", "Form", "Header", "Path", "Query"]
+__all__ = ["Body", "Constraints", "Cookie", "Depends", "Form", "Header", "Path", "Query"]

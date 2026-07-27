@@ -114,6 +114,17 @@ if [[ "${invalid_status}" != "400" ]]; then
   exit 1
 fi
 
+constrained_status="$(
+  curl --silent --show-error --output /dev/null --write-out "%{http_code}" --max-time 10 \
+    -X POST "http://127.0.0.1:${port}/typed/${item_id}?repeat=4" \
+    -H "content-type: application/json" \
+    --data '{"value":"edge"}'
+)"
+if [[ "${constrained_status}" != "400" ]]; then
+  echo "expected out-of-range typed query to return 400; got ${constrained_status}" >&2
+  exit 1
+fi
+
 raw_invalid_status="$(
   curl --silent --show-error --output /dev/null --write-out "%{http_code}" --max-time 10 \
     "http://127.0.0.1:${port}/raw/not-a-uuid"
@@ -128,7 +139,7 @@ openapi="$(
     "http://127.0.0.1:${port}/openapi.json"
 )"
 uv run python -c \
-  'import json,sys; document=json.loads(sys.argv[1]); operation=document["paths"]["/typed/{item_id}"]["post"]; parameters={(item["in"],item["name"]):item for item in operation["parameters"]}; assert parameters[("path","item_id")]["schema"] == {"type":"string","format":"uuid"}; assert parameters[("query","repeat")]["schema"] == {"type":"integer","default":1}; assert operation["responses"]["201"]["content"]["application/json"]["schema"]["properties"]["item_id"]["format"] == "uuid"' \
+  'import json,sys; document=json.loads(sys.argv[1]); operation=document["paths"]["/typed/{item_id}"]["post"]; parameters={(item["in"],item["name"]):item for item in operation["parameters"]}; assert parameters[("path","item_id")]["schema"] == {"type":"string","format":"uuid"}; assert parameters[("query","repeat")]["schema"] == {"type":"integer","minimum":1,"maximum":3,"default":1}; assert operation["responses"]["201"]["content"]["application/json"]["schema"]["properties"]["item_id"]["format"] == "uuid"' \
   "${openapi}"
 
 upload="$(grep -F "Total Upload:" "${dry_run_log}" | tail -1)"

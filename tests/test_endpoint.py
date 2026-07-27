@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 
 from hayate_openapi import (
     Body,
+    Constraints,
     Cookie,
     Depends,
     Form,
@@ -258,6 +259,53 @@ async def test_pydantic_and_msgspec_constraints_work_for_scalar_parameters():
     assert msgspec_parameter["schema"]["minimum"] == 1
 
 
+async def test_stdlib_constraints_are_portable_and_documented():
+    app = Hayate()
+
+    @app.get("/search")
+    @endpoint
+    async def search(
+        limit: Annotated[int, Constraints(ge=1, le=100), Query()] = 25,
+        cursor: Annotated[
+            str | None,
+            Constraints(min_length=3, max_length=12, pattern=r"^[a-z0-9]+$"),
+            Query(),
+        ] = None,
+    ) -> dict[str, int | str | None]:
+        return {"limit": limit, "cursor": cursor}
+
+    valid = await app.request("/search?limit=100&cursor=abc123")
+    assert valid.status == 200
+    assert await valid.json() == {"limit": 100, "cursor": "abc123"}
+
+    for path in (
+        "/search?limit=0",
+        "/search?limit=101",
+        "/search?limit=many",
+        "/search?cursor=ab",
+        "/search?cursor=not-valid!",
+    ):
+        response = await app.request(path)
+        assert response.status == 400
+        assert response.headers.get("content-type") == "application/problem+json"
+
+    document = OpenApi(app, title="Portable constraints", version="1").generate()
+    parameters = {
+        parameter["name"]: parameter
+        for parameter in document["paths"]["/search"]["get"]["parameters"]
+    }
+    assert parameters["limit"]["schema"] == {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 100,
+        "default": 25,
+    }
+    cursor_schema = parameters["cursor"]["schema"]
+    assert cursor_schema["minLength"] == 3
+    assert cursor_schema["maxLength"] == 12
+    assert cursor_schema["pattern"] == "^[a-z0-9]+$"
+
+
 async def test_declared_response_is_validated_and_failures_do_not_leak():
     app = Hayate()
 
@@ -321,6 +369,25 @@ def test_ambiguous_typed_signatures_fail_at_registration():
     first.__annotations__["value"] = Annotated[str, marker]
     with pytest.raises(TypeError, match="dependency cycle"):
         endpoint(first)
+
+
+@pytest.mark.parametrize(
+    "annotation",
+    [
+        Annotated[str, Constraints(ge=1), Query()],
+        Annotated[int, Constraints(min_length=1), Query()],
+        Annotated[int, Constraints(gt=10, le=10), Query()],
+        Annotated[str, Constraints(min_length=2, max_length=1), Query()],
+        Annotated[str, Constraints(pattern="["), Query()],
+    ],
+)
+def test_invalid_stdlib_constraints_fail_at_registration(annotation):
+    async def invalid(value):
+        return value
+
+    invalid.__annotations__ = {"value": annotation}
+    with pytest.raises(TypeError, match=r"Constraints|constraint|bound|pattern|length"):
+        endpoint(invalid, providers=[StdlibProvider()])
 
 
 @pytest.mark.parametrize(

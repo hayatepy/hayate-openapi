@@ -9,6 +9,8 @@ wiring.
 from __future__ import annotations
 
 import contextlib
+import math
+import re
 import sys
 from collections.abc import Callable
 from datetime import date, datetime, time
@@ -29,6 +31,8 @@ from typing import (
     is_typeddict,
 )
 from uuid import UUID
+
+from .parameters import Constraints
 
 
 class SchemaProvider(Protocol):
@@ -105,6 +109,10 @@ class PydanticProvider:
         self._adapter = TypeAdapter
 
     def supports(self, type_: Any) -> bool:
+        if get_origin(type_) is Annotated and any(
+            isinstance(item, Constraints) for item in get_args(type_)[1:]
+        ):
+            return False
         try:
             self._adapter(type_)
         except Exception:
@@ -149,6 +157,144 @@ def _unwrap_required(type_: Any) -> Any:
     return get_args(type_)[0] if get_origin(type_) in (Required, NotRequired) else type_
 
 
+def _constraint_metadata(type_: Any) -> tuple[Any, Constraints] | None:
+    if get_origin(type_) is not Annotated:
+        return None
+    base, *metadata = get_args(type_)
+    constraints = [item for item in metadata if isinstance(item, Constraints)]
+    if not constraints:
+        return None
+    if len(constraints) != 1 or len(metadata) != 1:
+        raise TypeError("Constraints cannot be combined with other Annotated metadata")
+    return base, constraints[0]
+
+
+def _constraint_kinds(type_: Any) -> set[str]:
+    type_ = _unwrap_required(type_)
+    metadata = _constraint_metadata(type_)
+    if metadata is not None:
+        type_, _ = metadata
+    origin = get_origin(type_)
+    args = get_args(type_)
+    if type_ in (int, float):
+        return {"number"}
+    if type_ is str:
+        return {"string"}
+    if type_ is _NONE_TYPE:
+        return set()
+    if origin in _UNION_ORIGINS:
+        return set().union(*(_constraint_kinds(item) for item in args))
+    if origin is Literal:
+        return {
+            "string" if isinstance(item, str) else "number"
+            for item in args
+            if isinstance(item, (str, int, float)) and not isinstance(item, bool)
+        }
+    if isinstance(type_, type) and issubclass(type_, Enum):
+        return {
+            "string" if isinstance(member.value, str) else "number"
+            for member in type_
+            if isinstance(member.value, (str, int, float)) and not isinstance(member.value, bool)
+        }
+    return set()
+
+
+def _validate_constraint_definition(type_: Any, constraints: Constraints) -> None:
+    numeric = {
+        "gt": constraints.gt,
+        "ge": constraints.ge,
+        "lt": constraints.lt,
+        "le": constraints.le,
+    }
+    active_numeric = {name: value for name, value in numeric.items() if value is not None}
+    active_string = {
+        "min_length": constraints.min_length,
+        "max_length": constraints.max_length,
+        "pattern": constraints.pattern,
+    }
+    active_string = {name: value for name, value in active_string.items() if value is not None}
+    kinds = _constraint_kinds(type_)
+    if active_numeric and kinds != {"number"}:
+        raise TypeError("numeric Constraints require an int, float, numeric Literal, or union")
+    if active_string and kinds != {"string"}:
+        raise TypeError("string Constraints require a str, string Literal, or union")
+    if active_numeric and active_string:
+        raise TypeError("numeric and string Constraints cannot be combined")
+    for name, value in active_numeric.items():
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, int | float)
+            or (isinstance(value, float) and not math.isfinite(value))
+        ):
+            raise TypeError(f"Constraints.{name} must be a finite number")
+    for name in ("min_length", "max_length"):
+        value = getattr(constraints, name)
+        if value is not None and (
+            isinstance(value, bool) or not isinstance(value, int) or value < 0
+        ):
+            raise TypeError(f"Constraints.{name} must be a non-negative integer")
+    if (
+        constraints.min_length is not None
+        and constraints.max_length is not None
+        and constraints.min_length > constraints.max_length
+    ):
+        raise TypeError("Constraints.min_length cannot exceed max_length")
+    if constraints.pattern is not None:
+        try:
+            re.compile(constraints.pattern)
+        except re.error as exc:
+            raise TypeError(f"Constraints.pattern is invalid: {exc}") from exc
+
+    lower_bounds = [
+        (value, exclusive)
+        for value, exclusive in ((constraints.gt, True), (constraints.ge, False))
+        if value is not None
+    ]
+    upper_bounds = [
+        (value, exclusive)
+        for value, exclusive in ((constraints.lt, True), (constraints.le, False))
+        if value is not None
+    ]
+    if lower_bounds and upper_bounds:
+        lower, lower_exclusive = max(lower_bounds, key=lambda item: (item[0], item[1]))
+        upper, upper_exclusive = min(upper_bounds, key=lambda item: (item[0], not item[1]))
+        if lower > upper or (lower == upper and (lower_exclusive or upper_exclusive)):
+            raise TypeError("Constraints numeric lower bound must be below the upper bound")
+
+
+def _apply_constraint_schema(schema: dict[str, Any], constraints: Constraints) -> dict[str, Any]:
+    keywords = {
+        "exclusiveMinimum": constraints.gt,
+        "minimum": constraints.ge,
+        "exclusiveMaximum": constraints.lt,
+        "maximum": constraints.le,
+        "minLength": constraints.min_length,
+        "maxLength": constraints.max_length,
+        "pattern": constraints.pattern,
+    }
+    return {**schema, **{name: value for name, value in keywords.items() if value is not None}}
+
+
+def _enforce_constraints(value: Any, constraints: Constraints) -> Any:
+    if value is None:
+        return None
+    if constraints.gt is not None and not value > constraints.gt:
+        raise ValueError(f"expected a value greater than {constraints.gt}")
+    if constraints.ge is not None and not value >= constraints.ge:
+        raise ValueError(f"expected a value greater than or equal to {constraints.ge}")
+    if constraints.lt is not None and not value < constraints.lt:
+        raise ValueError(f"expected a value less than {constraints.lt}")
+    if constraints.le is not None and not value <= constraints.le:
+        raise ValueError(f"expected a value less than or equal to {constraints.le}")
+    if constraints.min_length is not None and len(value) < constraints.min_length:
+        raise ValueError(f"expected at least {constraints.min_length} characters")
+    if constraints.max_length is not None and len(value) > constraints.max_length:
+        raise ValueError(f"expected at most {constraints.max_length} characters")
+    if constraints.pattern is not None and re.search(constraints.pattern, value) is None:
+        raise ValueError(f"expected a value matching {constraints.pattern!r}")
+    return value
+
+
 def _json_type(values: list[Any]) -> str | None:
     kinds = {type(value) for value in values if value is not None}
     if not kinds:
@@ -171,7 +317,12 @@ def _stdlib_schema(type_: Any, seen: set[Any] | None = None) -> dict[str, Any]:
     origin = get_origin(type_)
     args = get_args(type_)
     if origin is Annotated:
-        raise TypeError("stdlib schemas do not interpret Annotated metadata")
+        metadata = _constraint_metadata(type_)
+        if metadata is None:
+            raise TypeError("stdlib schemas only interpret hayate_openapi.Constraints metadata")
+        base, constraints = metadata
+        _validate_constraint_definition(base, constraints)
+        return _apply_constraint_schema(_stdlib_schema(base, seen), constraints)
     if type_ is Any:
         return {}
     if type_ is _NONE_TYPE:
@@ -267,6 +418,15 @@ def _stdlib_convert(type_: Any, value: Any, *, strings: bool = False) -> Any:
     type_ = _unwrap_required(type_)
     origin = get_origin(type_)
     args = get_args(type_)
+    if origin is Annotated:
+        metadata = _constraint_metadata(type_)
+        if metadata is None:
+            raise TypeError("stdlib converters only interpret hayate_openapi.Constraints metadata")
+        base, constraints = metadata
+        return _enforce_constraints(
+            _stdlib_convert(base, value, strings=strings),
+            constraints,
+        )
     if type_ is Any:
         return value
     if type_ is _NONE_TYPE:
@@ -384,6 +544,13 @@ def _stdlib_dump(type_: Any, value: Any) -> Any:
     type_ = _unwrap_required(type_)
     origin = get_origin(type_)
     args = get_args(type_)
+    if origin is Annotated:
+        metadata = _constraint_metadata(type_)
+        if metadata is None:
+            raise TypeError("stdlib dump only interprets hayate_openapi.Constraints metadata")
+        type_, _ = metadata
+        origin = get_origin(type_)
+        args = get_args(type_)
     if value is None:
         return None
     if isinstance(value, Enum):

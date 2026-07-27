@@ -1,11 +1,14 @@
 """hayate-openapi: OpenAPI 3.1 from what your app already knows."""
 
+from .endpoint import endpoint
 from .generate import OpenApi
+from .parameters import Body, Cookie, Depends, Form, Header, Path, Query
 from .providers import (
     MsgspecProvider,
     PydanticProvider,
     RawSchemaProvider,
     SchemaProvider,
+    StdlibProvider,
     default_providers,
 )
 from .security import (
@@ -17,22 +20,31 @@ from .security import (
 )
 from .tags import binary_file, describe, validated
 
-__version__ = "0.4.2"
+__version__ = "0.5.0"
 
 __all__ = [
+    "Body",
+    "Cookie",
+    "Depends",
+    "Form",
+    "Header",
     "MsgspecProvider",
     "OpenApi",
+    "Path",
     "PydanticProvider",
+    "Query",
     "RawSchemaProvider",
     "SchemaProvider",
     "SecurityRequirement",
     "SecurityScheme",
+    "StdlibProvider",
     "__version__",
     "bearer_security",
     "binary_file",
     "cookie_security",
     "default_providers",
     "describe",
+    "endpoint",
     "oauth2_authorization_code_security",
     "validated",
 ]

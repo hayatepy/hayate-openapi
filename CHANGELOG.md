@@ -4,6 +4,31 @@ All notable changes to hayate-openapi are documented here.
 
 ## Unreleased
 
+## [0.5.0] - 2026-07-27
+
+### Added
+
+- Add an opt-in `@endpoint` decorator with explicit `typing.Annotated`
+  `Body`, `Form`, `Query`, `Path`, `Header`, `Cookie`, and `Depends`
+  markers. One signature now drives request binding, runtime validation,
+  dependency injection, JSON serialization, response validation, and
+  OpenAPI 3.1 documentation without changing Hayate's Context handler API.
+- Resolve synchronous and asynchronous sub-dependencies with request-scoped
+  caching and an explicit `use_cache=False` escape hatch.
+- Add a dependency-free `StdlibProvider` for primitives, UUID/date/time,
+  enums, literals, unions, collections, mappings, and `TypedDict`, including
+  conversion from textual HTTP parameters and JSON-safe response dumping.
+- Publish `msgspec` and `pydantic` installation extras while keeping both
+  schema libraries optional.
+
+### Changed
+
+- Allow msgspec and Pydantic providers to describe scalar and container
+  annotations in addition to model classes, preserving their native
+  constraints in typed endpoint parameters.
+- Exercise both typed endpoints and raw JSON Schema validation in the real
+  Node 24 Workerd candidate-wheel gate.
+
 ## [0.4.2] - 2026-07-27
 
 ### Fixed

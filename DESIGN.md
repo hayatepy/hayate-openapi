@@ -7,29 +7,35 @@
 
 - **コンセプトは一文で「アプリが既に知っていることだけから OpenAPI 3.1 を生成する」**。
   ルートは `app.routes`(本体 0.8 で公開)、リクエストスキーマは validator に渡した型、
-  応答スキーマは加算的な `describe()` 注釈。魔法の推論はしない。
+  または明示的な `Annotated` marker、応答スキーマは `describe()` または
+  `@endpoint` の return annotation。暗黙的な body/query 推論はしない。
 - **OpenAPI 3.1 = JSON Schema 2020-12** なので、スキーマ変換は
   `SchemaProvider` protocol(型 → JSON Schema dict)に外部化。
-  msgspec / pydantic を guarded import で自動検出し、**コアの依存は hayate のみ**。
-- 表面は 3 つ: `OpenApi(app, title=..., version=...)` を `register(app)` すると
+  msgspec / pydantic を guarded import で自動検出し、stdlib 型は追加依存なしで扱う。
+- 生成 surface は `OpenApi(app, title=..., version=...)`。`register(app)` すると
   `GET /openapi.json` と対話型 `GET /docs` が生え、`generate()` は dict を返す
-  (CLI / 静的出力用)。
+  (CLI / 静的出力用)。契約 annotation は既存 `validated` / `describe` と、
+  opt-in の typed `endpoint`。
 
 ```python
 from hayate import Hayate, validator
 from hayate_openapi import OpenApi, describe, validated
 import msgspec
 
+
 class BookIn(msgspec.Struct):
     title: str
 
+
 app = Hayate()
 
-@app.post("/books", validated("json", BookIn))   # validator + スキーマタグの糖衣
+
+@app.post("/books", validated("json", BookIn))  # validator + スキーマタグの糖衣
 @describe(status=201, summary="Create a book")
 async def create(c):
     book = c.req.valid("json")
     return c.json({"title": book.title}, status=201)
+
 
 OpenApi(app, title="Bookstore", version="1.0.0").register(app)
 ```
@@ -54,16 +60,16 @@ OpenApi(app, title="Bookstore", version="1.0.0").register(app)
 ## 3. アーキテクチャ
 
 ```
-アプリ:  validated("json", T) / @describe(...) / OpenApi(app).register(app)
+アプリ:  @endpoint / validated("json", T) / @describe(...) / OpenApi(app).register(app)
 ─────────────────────────────────────────────
 hayate-openapi:  Route 走査(app.routes)→ operation 合成 → components/$defs 集約
 ─────────────────────────────────────────────
-SchemaProvider protocol:  型 → JSON Schema 2020-12(msgspec | pydantic | 自作)
+SchemaProvider protocol:  型 → JSON Schema 2020-12(msgspec | pydantic | stdlib | 自作)
 ─────────────────────────────────────────────
 hayate 本体:  app.routes(0.8 で公開)/ validator / URLPattern
 ```
 
-### 3.1 情報源は 3 つだけ(決定)
+### 3.1 情報源は 4 つだけ(決定)
 
 1. **`app.routes`** — method / pattern / middleware / handler の登録簿。
    本体 0.8 で公開させた(Hono も `app.routes` を公開している前例。
@@ -74,9 +80,15 @@ hayate 本体:  app.routes(0.8 で公開)/ validator / URLPattern
    として黙って通す)。
 3. **`describe()` タグ** — handler 属性 `__openapi__` に summary / tags /
    status / response 型 / operation_id を積む。すべて任意。
+4. **`@endpoint` タグ** — `Body` / `Query` / `Path` / `Header` /
+   `Cookie` / `Form` / `Depends` を付けた `Annotated` parameter と return
+   annotation を、runtime binding・dependency graph・OpenAPI の共通情報源にする。
 
-- **却下**: ハンドラシグネチャからの推論(FastAPI 型)— hayate のハンドラは
-  `(c)` の 1 引数で型情報を持たない。validator が唯一の型接続点。
+- **変更した判断(0.5)**: 0.1 ではハンドラシグネチャ推論を却下したが、
+  `validated(...)` / `c.req.valid(...)` / `describe(...)` の三重記述が採用摩擦に
+  なった。既存 `(c)` handler と router は一切変更せず、optional package の
+  `@endpoint` が typed function を `(c)` wrapper に変換する形なら core の単純さを
+  保てる。FastAPI と違い request source は marker 必須で、暗黙推論は行わない。
 - **却下**: ルート登録の独自ラッパー(`openapi.get(...)`)— 二重の登録 API は
   house style「本体への変更要求ゼロ → ただし本体の責務は本体へ」の精神に反する。
   ルート列挙は本体の責務として昇格させた。
@@ -91,7 +103,7 @@ class SchemaProvider(Protocol):
 ```
 
 - 既定は自動検出チェーン: msgspec(`msgspec.json.schema_components`)→
-  pydantic(`TypeAdapter(T).json_schema`)→ dict を JSON Schema Draft 2020-12
+  pydantic(`TypeAdapter(T).json_schema`)→ stdlib 型→ dict を JSON Schema Draft 2020-12
   として一度 compile し、format を含め request ごとに検証。
   ライブラリが無ければ該当 provider はスキップ(guarded import)。
 - `$defs` は `components/schemas` に集約し、`$ref` を書き換える。
@@ -142,7 +154,7 @@ class SchemaProvider(Protocol):
 | OpenAPI 3.0.x 出力 | JSON Schema 方言が別物。3.1 のみ |
 | webhooks / callbacks / links | 証拠駆動で待つ |
 | renderer asset の package 同梱 | Python wheel と依存グラフを肥大化させず、既定は SRI 固定 CDN、必要なら same-origin self-host |
-| ランタイムのレスポンス検証 | 生成器はドキュメントを書くだけ。検証は validator の役割 |
+| 既存 Context handler の暗黙レスポンス検証 | `@endpoint` だけが明示した return annotation を検証。従来 handler は挙動を変えない |
 
 ## 6. リスクと対応
 
@@ -160,6 +172,7 @@ class SchemaProvider(Protocol):
 | v0.2 | **完了(2026-07-24)**: cookie/Bearer/OAuth2 security schemes、auth middleware からの operation security 推論、public override、multipart + binary file、`py.typed` | auth をマウントした文書の security と upload schema を openapi-spec-validator で検証。17 tests + strict mypy 6 files ✅ |
 | v0.3 | **完了(2026-07-25)**: Scalar 対話型 docs(`/docs`)、SRI/CSP/XSS hardening、self-host/disable、内部 route の schema 除外 | 31 tests + strict mypy/ruff ✅。実 browser で描画 → path parameter 入力 → Test Request → hayate endpoint の 200 JSON を一周、console/CSP error 0 ✅ |
 | v0.4 | **完了(2026-07-27)**: `param` / `header` / `cookie` validator の OpenAPI parameter 投影、route/schema 整合性検証、version drift gate | PyPI hayate 0.12.0 のみで 37 tests、OpenAPI 3.1 validator、openapi-typescript 7.13、strict mypy/ruff ✅ |
+| v0.5 | `Annotated` typed endpoint、request-scope dependency graph、stdlib provider、response validation | Python 3.12–3.14、OpenAPI validator、openapi-typescript、candidate wheel の実 Workerd typed/raw contract |
 | v1.0 | API 凍結 | 本体 v1.0 より後 |
 
 ### 決定済み(2026-07-23)
@@ -169,4 +182,4 @@ class SchemaProvider(Protocol):
 | 名前 | **hayate-openapi**(配布名)/ `hayate_openapi`(import 名) |
 | リポジトリ | `hayatepy/hayate-openapi`。private 開始、v0.1 完成時に公開判断 |
 | ライセンス / 最低 Python | MIT / 3.12(本体に合わせる) |
-| 依存 | `hayate>=0.8`(`app.routes`)のみ。msgspec / pydantic はオプショナル検出 |
+| 依存 | `hayate` + raw schema 実行契約用 `jsonschema`。msgspec / pydantic はオプショナル検出、stdlib provider は追加依存なし |

@@ -1,10 +1,13 @@
 """Representative application used by the interoperability gate."""
 
+from typing import Annotated, TypedDict
+from uuid import UUID
+
 import msgspec
 import pydantic
 from hayate import Context, Hayate, Response
 
-from hayate_openapi import binary_file, describe, validated
+from hayate_openapi import Body, Path, Query, binary_file, describe, endpoint, validated
 
 
 class BookIn(msgspec.Struct):
@@ -21,6 +24,16 @@ class BookOut(msgspec.Struct):
 class SearchQuery(pydantic.BaseModel):
     query: str
     limit: int = 20
+
+
+class TypedBookIn(TypedDict):
+    title: str
+
+
+class TypedBookOut(TypedDict):
+    id: UUID
+    title: str
+    notify: bool
 
 
 app = Hayate()
@@ -63,3 +76,13 @@ async def search(c: Context) -> Response:
 )
 async def upload_cover(c: Context) -> Response:
     return c.json({}, status=201)
+
+
+@app.post("/typed-books/:book_id")
+@endpoint(status=201, summary="Create a typed book", tags=["books"])
+async def create_typed_book(
+    book_id: Annotated[UUID, Path(description="Stable book identifier")],
+    book: Annotated[TypedBookIn, Body(description="Book creation input")],
+    notify: Annotated[bool, Query(description="Send a notification")] = False,
+) -> TypedBookOut:
+    return {"id": book_id, "title": book["title"], "notify": notify}

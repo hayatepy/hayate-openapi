@@ -16,7 +16,9 @@ from urllib.parse import urlsplit
 
 from hayate import Context, Response
 
-from .providers import SchemaProvider, default_providers, resolve
+from .endpoint import TYPED_BINDINGS_ATTR, TYPED_RESPONSES_ATTR, TypedBinding
+from .parameters import Body, Cookie, Form, Header, Path, Query
+from .providers import SchemaProvider, default_providers, dump_with, resolve
 from .security import SecurityRequirement, SecurityScheme
 from .tags import OPENAPI_ATTR
 
@@ -198,18 +200,132 @@ class OpenApi:
                     self._object_parameters(schema, components, location),
                 )
 
+        typed_form_schema: dict[str, Any] | None = None
+        typed_form_media_type: str | None = None
+        typed_form_required: list[str] = []
+        for binding in getattr(route.handler, TYPED_BINDINGS_ATTR, ()):
+            if not isinstance(binding, TypedBinding):
+                raise TypeError("typed endpoint binding metadata is invalid")
+            has_validator = True
+            schema = self._register_schema_from(
+                binding.provider,
+                binding.type_,
+                components,
+            )
+            if not binding.required:
+                schema = dict(schema)
+                schema["default"] = dump_with(
+                    binding.provider,
+                    binding.type_,
+                    binding.default,
+                )
+            marker = binding.marker
+            if isinstance(marker, Body):
+                if "requestBody" in operation:
+                    raise ValueError(f"duplicate request body for {route.method} {path}")
+                body: dict[str, Any] = {
+                    "required": binding.required,
+                    "content": {marker.media_type: {"schema": schema}},
+                }
+                if marker.description is not None:
+                    body["description"] = marker.description
+                operation["requestBody"] = body
+                continue
+            if isinstance(marker, Form):
+                if "requestBody" in operation:
+                    raise ValueError("cannot mix typed form fields with another request body")
+                if typed_form_media_type not in (None, marker.media_type):
+                    raise ValueError("typed form fields use conflicting media types")
+                typed_form_media_type = marker.media_type
+                if typed_form_schema is None:
+                    typed_form_schema = {
+                        "type": "object",
+                        "properties": {},
+                    }
+                assert binding.external_name is not None
+                properties = typed_form_schema["properties"]
+                if binding.external_name in properties:
+                    raise ValueError(f"duplicate OpenAPI form field {binding.external_name!r}")
+                field_schema = dict(schema)
+                if marker.description is not None:
+                    field_schema.setdefault("description", marker.description)
+                properties[binding.external_name] = field_schema
+                if binding.required:
+                    typed_form_required.append(binding.external_name)
+                continue
+
+            location = {
+                "query": "query",
+                "param": "path",
+                "header": "header",
+                "cookie": "cookie",
+            }[binding.target]
+            assert binding.external_name is not None
+            if isinstance(marker, Header) and binding.external_name.lower() in {
+                "accept",
+                "authorization",
+                "content-type",
+            }:
+                raise ValueError(
+                    f"OpenAPI ignores the {binding.external_name!r} header parameter; "
+                    "use requestBody or a security scheme instead"
+                )
+            parameter: dict[str, Any] = {
+                "name": binding.external_name,
+                "in": location,
+                "required": True if isinstance(marker, Path) else binding.required,
+                "schema": schema,
+            }
+            description = getattr(marker, "description", None)
+            if description is not None:
+                parameter["description"] = description
+            if isinstance(marker, Query | Header | Cookie) and marker.deprecated:
+                parameter["deprecated"] = True
+            if isinstance(marker, Path):
+                matching = [
+                    existing
+                    for existing in parameters
+                    if existing.get("in") == "path"
+                    and existing.get("name") == binding.external_name
+                ]
+                if not matching:
+                    raise ValueError(
+                        f"typed path parameter {binding.external_name!r} "
+                        f"is not present in route {route.pattern!r}"
+                    )
+                matching[0].update(parameter)
+            else:
+                self._extend_parameters(parameters, [parameter])
+
+        if typed_form_schema is not None:
+            if typed_form_required:
+                typed_form_schema["required"] = typed_form_required
+            operation["requestBody"] = {
+                "required": bool(typed_form_required),
+                "content": {
+                    typed_form_media_type or "application/x-www-form-urlencoded": {
+                        "schema": typed_form_schema
+                    }
+                },
+            }
+
         if explicit_security is None and inferred_security:
             operation["security"] = [inferred_security]
         if parameters:
             operation["parameters"] = parameters
 
         responses: dict[str, Any] = {}
+        typed_responses = getattr(route.handler, TYPED_RESPONSES_ATTR, {})
         for status, type_ in (meta.get("responses") or {}).items():
             entry: dict[str, Any] = {"description": _status_text(status)}
             if type_ is not None:
-                entry["content"] = {
-                    "application/json": {"schema": self._register_schema(type_, components)}
-                }
+                typed = typed_responses.get(status)
+                schema = (
+                    self._register_schema_from(typed[1], typed[0], components)
+                    if typed is not None and typed[0] == type_
+                    else self._register_schema(type_, components)
+                )
+                entry["content"] = {"application/json": {"schema": schema}}
             responses[str(status)] = entry
         if not responses:
             responses["200"] = {"description": "Successful response"}
@@ -223,6 +339,14 @@ class OpenApi:
 
     def _register_schema(self, type_: Any, components: dict[str, Any]) -> dict[str, Any]:
         provider = resolve(self.providers, type_)
+        return self._register_schema_from(provider, type_, components)
+
+    @staticmethod
+    def _register_schema_from(
+        provider: SchemaProvider,
+        type_: Any,
+        components: dict[str, Any],
+    ) -> dict[str, Any]:
         schema, defs = provider.schema(type_)
         for name, definition in defs.items():
             existing = components.get(name, _MISSING)

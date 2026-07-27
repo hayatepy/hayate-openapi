@@ -6,10 +6,11 @@
 
 OpenAPI 3.1 generation for [hayate](https://github.com/hayatepy/hayate) —
 built from what your app already knows: routes from `app.routes`, request
-schemas from your validators, response schemas from one decorator. No magic
-inference, no schema-library lock-in.
+schemas from validators or explicit typed parameters, and response schemas
+from one decorator. No implicit body/query guessing and no schema-library
+lock-in.
 
-> **Status: alpha (0.4.x).** The emitted OpenAPI 3.1.1 document passes
+> **Status: alpha (0.5.x).** The emitted OpenAPI 3.1.1 document passes
 > `openapi-spec-validator` and feeds `openapi-typescript` 7.13 for end-to-end
 > TypeScript types in a locked CI interoperability gate. The internal design
 > memo (Japanese, per project convention) lives in [DESIGN.md](DESIGN.md).
@@ -17,21 +18,99 @@ inference, no schema-library lock-in.
 > inline typing are included. Release history is in
 > [CHANGELOG.md](CHANGELOG.md).
 
+The typed endpoint surface removes repeated validation and response glue while
+keeping every request source explicit:
+
+```python
+from typing import Annotated, TypedDict
+from uuid import UUID
+
+from hayate import Hayate
+from hayate_openapi import Body, OpenApi, Path, Query, endpoint
+
+
+class BookIn(TypedDict):
+    title: str
+
+
+class BookOut(TypedDict):
+    id: UUID
+    title: str
+
+
+app = Hayate()
+
+
+@app.post("/books/:book_id")
+@endpoint(status=201, summary="Create a book")
+async def create(
+    book_id: Annotated[UUID, Path()],
+    book: Annotated[BookIn, Body()],
+    notify: Annotated[bool, Query()] = False,
+) -> BookOut:
+    if notify:
+        ...
+    return {"id": book_id, "title": book["title"]}
+
+
+OpenApi(app, title="Bookstore", version="1.0.0").register(app)
+```
+
+`@endpoint` validates and converts every marked input, validates the declared
+return type, emits JSON, and attaches the exact same schemas to OpenAPI.
+Invalid inputs use Hayate's RFC 9457 `400` response; response contract failures
+remain non-leaking `500` errors. Put the decorator closest to the function,
+below the Hayate route decorator.
+
+Dependencies can have request parameters and sub-dependencies. A dependency
+runs once per request even when several consumers use it:
+
+```python
+from hayate import Context
+from hayate_openapi import Depends, Header
+
+
+def request_id(
+    c: Context,
+    value: Annotated[UUID, Header(alias="x-request-id")],
+) -> UUID:
+    return value
+
+
+@app.get("/jobs/:job_id")
+@endpoint
+async def job(
+    job_id: Annotated[UUID, Path()],
+    trace: Annotated[UUID, Depends(request_id)],
+) -> dict[str, str]:
+    return {"job_id": str(job_id), "trace": str(trace)}
+```
+
+Use `Depends(callable, use_cache=False)` only when a fresh result is required.
+Synchronous dependencies run in a worker thread on native Python and inline
+on threadless Pyodide; async dependencies work on both.
+
+The original Context-first surface remains fully supported:
+
 ```python
 from hayate import Hayate
 from hayate_openapi import OpenApi, describe, validated
 import msgspec
 
+
 class BookIn(msgspec.Struct):
     title: str
 
+
 app = Hayate()
 
-@app.post("/books", validated("json", BookIn))   # validator + schema tag in one
+
+@app.post("/books", validated("json", BookIn))  # validator + schema tag in one
 @describe(status=201, summary="Create a book")
 async def create(c):
-    book = c.req.valid("json")     # BookIn instance — validation still runs
+    book = c.req.valid("json")  # BookIn instance — validation still runs
     return c.json({"title": book.title}, status=201)
+
 
 OpenApi(app, title="Bookstore", version="1.0.0").register(app)
 # GET /openapi.json and interactive GET /docs are live; or emit statically:
@@ -43,6 +122,7 @@ OpenApi(app, title="Bookstore", version="1.0.0").register(app)
 | Source | What it provides |
 |---|---|
 | `app.routes` (hayate ≥ 0.8) | every method + path, converted to OpenAPI templating (`:id` → `{id}`) |
+| `@endpoint` + `Annotated` markers | typed binding, dependencies, response validation, JSON serialization, and matching schemas |
 | `validated(target, T)` | request body plus query / path / header / cookie schemas — a tagging wrapper around the core `validator`, behavior-identical |
 | `@describe(...)` | summary, tags, response schemas, operationId — all optional, all additive |
 
@@ -52,6 +132,7 @@ hayate-auth middleware can supply operation security automatically:
 @app.get("/documents", auth.require_oauth_token("documents:read"))
 async def documents(c):
     return c.json([])
+
 
 OpenApi(
     app,
@@ -65,14 +146,16 @@ Use `@describe(security=[])` for an explicitly public operation. For uploads,
 combine `validated("form", schema, media_type="multipart/form-data")` with
 `binary_file()` in a raw schema.
 
-Schema conversion goes through a `SchemaProvider` protocol. msgspec and
-pydantic are auto-detected (guarded imports); a plain dict is taken as
-literal JSON Schema Draft 2020-12 and compiled once for runtime validation,
-including supported `format` checks such as UUID. The package depends on
-Hayate and `jsonschema`; msgspec and pydantic remain optional. CPython checks
-raw schemas when routes register. Pyodide compiles them on the first matching
-request and caches the validator because Workers forbids extension entropy
-during module-global evaluation.
+Schema conversion goes through a `SchemaProvider` protocol. The built-in
+`StdlibProvider` covers primitives, UUID/date/time, enums, literals, unions,
+collections, mappings, and `TypedDict` without another dependency. msgspec
+and pydantic are auto-detected through guarded imports; install them with
+`hayate-openapi[msgspec]` or `hayate-openapi[pydantic]` when their models and
+constraints are desired. A plain dict is taken as literal JSON Schema Draft
+2020-12 and compiled once for runtime validation, including supported
+`format` checks such as UUID. CPython checks raw schemas when routes register.
+Pyodide compiles them on the first matching request and caches the validator
+because Workers forbids extension entropy during module-global evaluation.
 
 `validated()` supports the core's six targets: `json`, `form`, `query`,
 `param`, `header`, and `cookie`. The last four expand object properties into
@@ -149,6 +232,8 @@ application schema.
   route middleware requirements.
 - JSON, URL-encoded, and multipart request bodies, including binary file
   parts.
+- Explicit typed endpoint parameters, including request fields declared by
+  cached sub-dependencies, and validated return annotations.
 
 ## License
 

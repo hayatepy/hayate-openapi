@@ -9,7 +9,7 @@ built from what your app already knows: routes from `app.routes`, request
 schemas from your validators, response schemas from one decorator. No magic
 inference, no schema-library lock-in.
 
-> **Status: alpha (0.3.x).** The emitted OpenAPI 3.1.1 document passes
+> **Status: alpha (0.4.x).** The emitted OpenAPI 3.1.1 document passes
 > `openapi-spec-validator` and feeds `openapi-typescript` 7.13 for end-to-end
 > TypeScript types in a locked CI interoperability gate. The internal design
 > memo (Japanese, per project convention) lives in [DESIGN.md](DESIGN.md).
@@ -43,7 +43,7 @@ OpenApi(app, title="Bookstore", version="1.0.0").register(app)
 | Source | What it provides |
 |---|---|
 | `app.routes` (hayate ≥ 0.8) | every method + path, converted to OpenAPI templating (`:id` → `{id}`) |
-| `validated(target, T)` | request body / query / form schemas — a tagging wrapper around the core `validator`, behavior-identical |
+| `validated(target, T)` | request body plus query / path / header / cookie schemas — a tagging wrapper around the core `validator`, behavior-identical |
 | `@describe(...)` | summary, tags, response schemas, operationId — all optional, all additive |
 
 hayate-auth middleware can supply operation security automatically:
@@ -68,6 +68,15 @@ combine `validated("form", schema, media_type="multipart/form-data")` with
 Schema conversion goes through a `SchemaProvider` protocol. msgspec and
 pydantic are auto-detected (guarded imports); a plain dict is taken as
 literal JSON Schema. **The package itself depends only on hayate.**
+
+`validated()` supports the core's six targets: `json`, `form`, `query`,
+`param`, `header`, and `cookie`. The last four expand object properties into
+OpenAPI parameters. A `param` property must match a route parameter and
+overrides its generated schema while remaining required as OpenAPI mandates.
+Header schemas use the lowercase names exposed by Fetch; model aliases such as
+`x-request-id` keep a Python field name separate when needed. OpenAPI-reserved
+`Accept`, `Content-Type`, and `Authorization` header parameters are rejected
+instead of emitting fields the specification ignores.
 
 TypeScript types, the recommended recipe:
 

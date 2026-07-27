@@ -72,6 +72,35 @@ def build_app() -> Hayate:
     async def plain(c: Context):
         return c.json({})
 
+    @app.get(
+        "/validated/:id",
+        validated(
+            "param",
+            {
+                "type": "object",
+                "properties": {"id": {"type": "string", "format": "uuid"}},
+                "required": ["id"],
+            },
+        ),
+        validated(
+            "header",
+            {
+                "type": "object",
+                "properties": {"x-request-id": {"type": "string"}},
+                "required": ["x-request-id"],
+            },
+        ),
+        validated(
+            "cookie",
+            {
+                "type": "object",
+                "properties": {"theme": {"type": "string", "enum": ["light", "dark"]}},
+            },
+        ),
+    )
+    async def validated_parameters(c: Context):
+        return c.json({})
+
     @app.on("GET", "/mounted/*")
     async def mounted(c: Context):
         return c.json({})

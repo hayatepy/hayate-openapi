@@ -187,8 +187,16 @@ class OpenApi:
                     "required": True,
                     "content": {media_type: {"schema": schema}},
                 }
-            else:  # query: expand an object schema into individual parameters
+            elif target == "query":
                 parameters.extend(self._query_parameters(schema, components))
+            elif target == "param":
+                self._apply_path_schema(parameters, schema, components)
+            else:
+                location = "header" if target == "header" else "cookie"
+                self._extend_parameters(
+                    parameters,
+                    self._object_parameters(schema, components, location),
+                )
 
         if explicit_security is None and inferred_security:
             operation["security"] = [inferred_security]
@@ -226,12 +234,106 @@ class OpenApi:
     def _query_parameters(
         self, schema: dict[str, Any], components: dict[str, Any]
     ) -> list[dict[str, Any]]:
+        # Preserve the original permissive query projection behavior. The
+        # newer parameter targets below reject non-object schemas because
+        # silently dropping their runtime contract would be misleading.
         resolved = self._deref(schema, components)
         required = set(resolved.get("required", ()))
         out = []
         for name, prop in (resolved.get("properties") or {}).items():
             out.append({"name": name, "in": "query", "required": name in required, "schema": prop})
         return out
+
+    def _object_parameters(
+        self,
+        schema: dict[str, Any],
+        components: dict[str, Any],
+        location: str,
+    ) -> list[dict[str, Any]]:
+        resolved = self._deref(schema, components)
+        properties = resolved.get("properties")
+        if resolved.get("type") not in (None, "object") or not isinstance(properties, dict):
+            raise ValueError(
+                f"{location} validator schema must be an object with named properties"
+            )
+        required = set(resolved.get("required", ()))
+        parameters = []
+        for name, prop in properties.items():
+            if not isinstance(name, str) or not name:
+                raise ValueError(f"{location} validator property names must be non-empty strings")
+            if location == "header" and name.lower() in {
+                "accept",
+                "authorization",
+                "content-type",
+            }:
+                raise ValueError(
+                    f"OpenAPI ignores the {name!r} header parameter; "
+                    "use requestBody or a security scheme instead"
+                )
+            parameters.append(
+                {
+                    "name": name,
+                    "in": location,
+                    "required": name in required,
+                    "schema": prop,
+                }
+            )
+        return parameters
+
+    def _apply_path_schema(
+        self,
+        parameters: list[dict[str, Any]],
+        schema: dict[str, Any],
+        components: dict[str, Any],
+    ) -> None:
+        validated = self._object_parameters(schema, components, "path")
+        path_parameters = {
+            parameter["name"]: parameter
+            for parameter in parameters
+            if parameter.get("in") == "path"
+        }
+        unknown = sorted(
+            parameter["name"]
+            for parameter in validated
+            if parameter["name"] not in path_parameters
+        )
+        if unknown:
+            raise ValueError(
+                "path validator properties are not route parameters: " + ", ".join(unknown)
+            )
+        for parameter in validated:
+            existing = path_parameters[parameter["name"]]
+            existing["schema"] = parameter["schema"]
+            # OpenAPI requires every path parameter to be required even when
+            # a schema library models its field as optional.
+            existing["required"] = True
+
+    @staticmethod
+    def _extend_parameters(
+        parameters: list[dict[str, Any]], additions: list[dict[str, Any]]
+    ) -> None:
+        keys = {
+            (
+                parameter["in"],
+                parameter["name"].lower()
+                if parameter["in"] == "header"
+                else parameter["name"],
+            )
+            for parameter in parameters
+        }
+        for parameter in additions:
+            key = (
+                parameter["in"],
+                parameter["name"].lower()
+                if parameter["in"] == "header"
+                else parameter["name"],
+            )
+            if key in keys:
+                raise ValueError(
+                    f"duplicate OpenAPI {parameter['in']} parameter {parameter['name']!r}"
+                )
+            keys.add(key)
+            parameters.append(parameter)
 
     @staticmethod
     def _deref(schema: dict[str, Any], components: dict[str, Any]) -> dict[str, Any]:

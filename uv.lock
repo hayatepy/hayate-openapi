@@ -76,19 +76,19 @@ wheels = [
 
 [[package]]
 name = "hayate"
-version = "0.10.0"
+version = "0.12.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "uts46" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/37/27/b0bdc3acfaaa7c96116c0f8be45a797868d715df5fe5d094d935e681fbde/hayate-0.10.0.tar.gz", hash = "sha256:ad3dddaf60afe63c305a848f086d2998f7ec91fc303fa4f0fdd45e3052118f28", size = 48267, upload-time = "2026-07-24T15:27:09.986Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/e7/8f/4660f100e1634afbba33446b9a0bfa83de267992d6d7f2ad02f7b2480ce5/hayate-0.12.0.tar.gz", hash = "sha256:c6f9f211a275bc452b19120634d4f1d7c9ae4ae799f58f0ce696f2cb1c483b5e", size = 56029, upload-time = "2026-07-27T00:23:46.46Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/3a/e8/3b93a264ec8376f75e6a33b9799d6832768276808b886877ccf256e437bf/hayate-0.10.0-py3-none-any.whl", hash = "sha256:ba053829f63f123ffa83aad5ee2d389cd5f15cc7bf43f7bd5f0770f86dfb0648", size = 64125, upload-time = "2026-07-24T15:27:08.502Z" },
+    { url = "https://files.pythonhosted.org/packages/ae/c3/d445b01311da927aee01a92ab3b208d7862167b2385358c81ec1899c433b/hayate-0.12.0-py3-none-any.whl", hash = "sha256:a52f2eb1df62a06c6fc5189812317b7336ece8bcc426cc0ac2672a42570cf10a", size = 72091, upload-time = "2026-07-27T00:23:45.213Z" },
 ]
 
 [[package]]
 name = "hayate-openapi"
-version = "0.3.1"
+version = "0.4.0"
 source = { editable = "." }
 dependencies = [
     { name = "hayate" },
@@ -106,7 +106,7 @@ dev = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "hayate", specifier = ">=0.8.0" }]
+requires-dist = [{ name = "hayate", specifier = ">=0.12.0" }]
 
 [package.metadata.requires-dev]
 dev = [

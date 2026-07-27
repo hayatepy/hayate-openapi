@@ -4,6 +4,8 @@ All notable changes to hayate-openapi are documented here.
 
 ## Unreleased
 
+## [0.7.0] - 2026-07-27
+
 ### Added
 
 - Bind Hayate's first-party `File` type from typed `multipart/form-data`

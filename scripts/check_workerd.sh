@@ -50,6 +50,10 @@ fi
   uvx --from create-hayate==0.5.1 create-hayate \
     demo-app --template workers --with openapi --no-input
   cd demo-app
+  # The released generator lock can predate this candidate's minimum Hayate.
+  # Update the generated project's declared core requirement before replacing
+  # only the candidate OpenAPI wheel below.
+  uv add "hayate>=0.13.0"
   uv sync
   uv pip install \
     --python .venv/bin/python \
@@ -125,6 +129,27 @@ if [[ "${constrained_status}" != "400" ]]; then
   exit 1
 fi
 
+uploaded="$(
+  printf 'edge upload' |
+    curl --fail --silent --show-error --max-time 10 \
+      -X POST "http://127.0.0.1:${port}/upload" \
+      --form 'file=@-;filename=edge.txt;type=text/plain'
+)"
+uv run python -c \
+  'import json,sys; assert json.loads(sys.argv[1]) == {"name":"edge.txt","media_type":"text/plain","size":11,"spooled":False,"content":"edge upload"}' \
+  "${uploaded}"
+
+upload_limit_status="$(
+  uv run python -c 'import sys; sys.stdout.buffer.write(b"x" * (33 * 1024))' |
+    curl --silent --show-error --output /dev/null --write-out "%{http_code}" --max-time 10 \
+      -X POST "http://127.0.0.1:${port}/upload" \
+      --form 'file=@-;filename=too-large.bin;type=application/octet-stream'
+)"
+if [[ "${upload_limit_status}" != "413" ]]; then
+  echo "expected oversized typed upload to return 413; got ${upload_limit_status}" >&2
+  exit 1
+fi
+
 raw_invalid_status="$(
   curl --silent --show-error --output /dev/null --write-out "%{http_code}" --max-time 10 \
     "http://127.0.0.1:${port}/raw/not-a-uuid"
@@ -139,7 +164,7 @@ openapi="$(
     "http://127.0.0.1:${port}/openapi.json"
 )"
 uv run python -c \
-  'import json,sys; document=json.loads(sys.argv[1]); operation=document["paths"]["/typed/{item_id}"]["post"]; parameters={(item["in"],item["name"]):item for item in operation["parameters"]}; assert parameters[("path","item_id")]["schema"] == {"type":"string","format":"uuid"}; assert parameters[("query","repeat")]["schema"] == {"type":"integer","minimum":1,"maximum":3,"default":1}; assert operation["responses"]["201"]["content"]["application/json"]["schema"]["properties"]["item_id"]["format"] == "uuid"' \
+  'import json,sys; document=json.loads(sys.argv[1]); operation=document["paths"]["/typed/{item_id}"]["post"]; parameters={(item["in"],item["name"]):item for item in operation["parameters"]}; assert parameters[("path","item_id")]["schema"] == {"type":"string","format":"uuid"}; assert parameters[("query","repeat")]["schema"] == {"type":"integer","minimum":1,"maximum":3,"default":1}; assert operation["responses"]["201"]["content"]["application/json"]["schema"]["properties"]["item_id"]["format"] == "uuid"; upload=document["paths"]["/upload"]["post"]; file_schema=upload["requestBody"]["content"]["multipart/form-data"]["schema"]["properties"]["file"]; assert file_schema == {"type":"string","format":"binary"}; assert upload["responses"]["413"]["description"] == "Payload Too Large"' \
   "${openapi}"
 
 upload="$(grep -F "Total Upload:" "${dry_run_log}" | tail -1)"
@@ -147,4 +172,4 @@ if [[ -z "${upload}" ]]; then
   echo "Wrangler dry-run did not report upload size" >&2
   exit 1
 fi
-echo "workerd typed and raw-schema contracts passed: ${upload}"
+echo "workerd typed, bounded upload, and raw-schema contracts passed: ${upload}"

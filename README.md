@@ -10,7 +10,7 @@ schemas from validators or explicit typed parameters, and response schemas
 from one decorator. No implicit body/query guessing and no schema-library
 lock-in.
 
-> **Status: alpha (0.5.x).** The emitted OpenAPI 3.1.1 document passes
+> **Status: alpha (0.6.x).** The emitted OpenAPI 3.1.1 document passes
 > `openapi-spec-validator` and feeds `openapi-typescript` 7.13 for end-to-end
 > TypeScript types in a locked CI interoperability gate. The internal design
 > memo (Japanese, per project convention) lives in [DESIGN.md](DESIGN.md).
@@ -26,7 +26,7 @@ from typing import Annotated, TypedDict
 from uuid import UUID
 
 from hayate import Hayate
-from hayate_openapi import Body, OpenApi, Path, Query, endpoint
+from hayate_openapi import Body, Constraints, OpenApi, Path, Query, endpoint
 
 
 class BookIn(TypedDict):
@@ -47,6 +47,7 @@ async def create(
     book_id: Annotated[UUID, Path()],
     book: Annotated[BookIn, Body()],
     notify: Annotated[bool, Query()] = False,
+    limit: Annotated[int, Constraints(ge=1, le=100), Query()] = 25,
 ) -> BookOut:
     if notify:
         ...
@@ -61,6 +62,11 @@ return type, emits JSON, and attaches the exact same schemas to OpenAPI.
 Invalid inputs use Hayate's RFC 9457 `400` response; response contract failures
 remain non-leaking `500` errors. Put the decorator closest to the function,
 below the Hayate route decorator.
+
+`Constraints` supplies portable numeric bounds (`gt`, `ge`, `lt`, `le`) and
+string rules (`min_length`, `max_length`, `pattern`) without Pydantic or
+msgspec. The same metadata validates converted HTTP values and emits JSON
+Schema keywords, including on the Cloudflare Workers/Pyodide path.
 
 Dependencies can have request parameters and sub-dependencies. A dependency
 runs once per request even when several consumers use it:
@@ -156,6 +162,9 @@ constraints are desired. A plain dict is taken as literal JSON Schema Draft
 `format` checks such as UUID. CPython checks raw schemas when routes register.
 Pyodide compiles them on the first matching request and caches the validator
 because Workers forbids extension entropy during module-global evaluation.
+Raw schemas validate the literal request representation, so query, path,
+header, and cookie values are strings. Use `@endpoint` with typed parameters
+when the wire value should be converted to an integer, number, or boolean.
 
 `validated()` supports the core's six targets: `json`, `form`, `query`,
 `param`, `header`, and `cookie`. The last four expand object properties into

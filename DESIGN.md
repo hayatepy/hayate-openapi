@@ -172,7 +172,8 @@ class SchemaProvider(Protocol):
 | v0.2 | **完了(2026-07-24)**: cookie/Bearer/OAuth2 security schemes、auth middleware からの operation security 推論、public override、multipart + binary file、`py.typed` | auth をマウントした文書の security と upload schema を openapi-spec-validator で検証。17 tests + strict mypy 6 files ✅ |
 | v0.3 | **完了(2026-07-25)**: Scalar 対話型 docs(`/docs`)、SRI/CSP/XSS hardening、self-host/disable、内部 route の schema 除外 | 31 tests + strict mypy/ruff ✅。実 browser で描画 → path parameter 入力 → Test Request → hayate endpoint の 200 JSON を一周、console/CSP error 0 ✅ |
 | v0.4 | **完了(2026-07-27)**: `param` / `header` / `cookie` validator の OpenAPI parameter 投影、route/schema 整合性検証、version drift gate | PyPI hayate 0.12.0 のみで 37 tests、OpenAPI 3.1 validator、openapi-typescript 7.13、strict mypy/ruff ✅ |
-| v0.5 | `Annotated` typed endpoint、request-scope dependency graph、stdlib provider、response validation | Python 3.12–3.14、OpenAPI validator、openapi-typescript、candidate wheel の実 Workerd typed/raw contract |
+| v0.5 | **完了(2026-07-27)**: `Annotated` typed endpoint、request-scope dependency graph、stdlib provider、response validation | Python 3.12–3.14、OpenAPI validator、openapi-typescript、candidate wheel の実 Workerd typed/raw contract ✅ |
+| v0.6 | **完了(2026-07-27)**: dependency-free `Constraints` metadata、数値境界・文字列長・pattern の runtime/OpenAPI 共通契約 | Pydantic/msgspec なしの実 Workerd で query coercion、範囲違反 400、OpenAPI keywords を一周 |
 | v1.0 | API 凍結 | 本体 v1.0 より後 |
 
 ### 決定済み(2026-07-23)

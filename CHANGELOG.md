@@ -4,6 +4,23 @@ All notable changes to hayate-openapi are documented here.
 
 ## Unreleased
 
+## [0.6.0] - 2026-07-27
+
+### Added
+
+- Add dependency-free `Constraints` metadata for portable typed endpoints.
+  Numeric bounds and string length/pattern rules now drive HTTP parameter
+  validation and OpenAPI schemas from the same `Annotated` declaration.
+- Exercise constrained integer query conversion and rejection in the real
+  candidate-wheel Workerd gate.
+
+### Changed
+
+- Prefer `StdlibProvider` for first-party `Constraints` metadata even when
+  Pydantic is installed, keeping CPython and Pyodide contracts identical.
+- Clarify that raw JSON Schemas validate literal string-valued HTTP parameter
+  mappings, while `@endpoint` is the conversion surface.
+
 ## [0.5.0] - 2026-07-27
 
 ### Added

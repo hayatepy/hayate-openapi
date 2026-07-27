@@ -7,6 +7,7 @@ from hayate import Context, Hayate, Response
 
 from hayate_openapi import (
     Body,
+    Constraints,
     OpenApi,
     Path,
     Query,
@@ -39,7 +40,7 @@ async def health(c: Context) -> Response:
 async def typed_echo(
     item_id: Annotated[UUID, Path()],
     payload: Annotated[EchoIn, Body()],
-    repeat: Annotated[int, Query()] = 1,
+    repeat: Annotated[int, Constraints(ge=1, le=3), Query()] = 1,
 ) -> EchoOut:
     return {
         "item_id": item_id,

@@ -2,7 +2,7 @@
 
 from .endpoint import endpoint
 from .generate import OpenApi
-from .parameters import Body, Cookie, Depends, Form, Header, Path, Query
+from .parameters import Body, Constraints, Cookie, Depends, Form, Header, Path, Query
 from .providers import (
     MsgspecProvider,
     PydanticProvider,
@@ -20,10 +20,11 @@ from .security import (
 )
 from .tags import binary_file, describe, validated
 
-__version__ = "0.5.0"
+__version__ = "0.6.0"
 
 __all__ = [
     "Body",
+    "Constraints",
     "Cookie",
     "Depends",
     "Form",

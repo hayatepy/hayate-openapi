@@ -168,6 +168,7 @@ class OpenApi:
 
         parameters = list(path_params)
         has_validator = False
+        has_form_body = False
         inferred_security: dict[str, list[str]] = {}
         for middleware in route.middleware:
             for requirement in getattr(middleware, "__openapi_security__", ()):
@@ -184,6 +185,7 @@ class OpenApi:
                     "content": {"application/json": {"schema": schema}},
                 }
             elif target == "form":
+                has_form_body = True
                 media_type = tag.get("media_type") or "application/x-www-form-urlencoded"
                 operation["requestBody"] = {
                     "required": True,
@@ -232,6 +234,7 @@ class OpenApi:
                 operation["requestBody"] = body
                 continue
             if isinstance(marker, Form):
+                has_form_body = True
                 if "requestBody" in operation:
                     raise ValueError("cannot mix typed form fields with another request body")
                 if typed_form_media_type not in (None, marker.media_type):
@@ -332,6 +335,11 @@ class OpenApi:
         if has_validator and "400" not in responses:
             responses["400"] = {
                 "description": "Validation failed",
+                "content": {"application/problem+json": {"schema": {"type": "object"}}},
+            }
+        if has_form_body and "413" not in responses:
+            responses["413"] = {
+                "description": "Payload Too Large",
                 "content": {"application/problem+json": {"schema": {"type": "object"}}},
             }
         operation["responses"] = responses

@@ -32,6 +32,8 @@ from typing import (
 )
 from uuid import UUID
 
+from hayate import File
+
 from .parameters import Constraints
 
 
@@ -151,6 +153,13 @@ _NONE_TYPE = type(None)
 _UNION_ORIGINS = (UnionType, Union)
 _SEQUENCE_ORIGINS = (list, set, frozenset, tuple)
 _MAPPING_ORIGINS = (dict,)
+
+
+def _contains_file(type_: Any) -> bool:
+    type_ = _unwrap_required(type_)
+    if type_ is File:
+        return True
+    return any(_contains_file(item) for item in get_args(type_))
 
 
 def _unwrap_required(type_: Any) -> Any:
@@ -325,6 +334,8 @@ def _stdlib_schema(type_: Any, seen: set[Any] | None = None) -> dict[str, Any]:
         return _apply_constraint_schema(_stdlib_schema(base, seen), constraints)
     if type_ is Any:
         return {}
+    if type_ is File:
+        return {"type": "string", "format": "binary"}
     if type_ is _NONE_TYPE:
         return {"type": "null"}
     if type_ is str:
@@ -429,6 +440,10 @@ def _stdlib_convert(type_: Any, value: Any, *, strings: bool = False) -> Any:
         )
     if type_ is Any:
         return value
+    if type_ is File:
+        if isinstance(value, File):
+            return value
+        raise ValueError("expected an uploaded file")
     if type_ is _NONE_TYPE:
         if value is None:
             return None
@@ -643,6 +658,10 @@ def default_providers() -> list[SchemaProvider]:
 
 
 def resolve(providers: list[SchemaProvider], type_: Any) -> SchemaProvider:
+    if _contains_file(type_):
+        for provider in providers:
+            if isinstance(provider, StdlibProvider) and provider.supports(type_):
+                return provider
     for provider in providers:
         if provider.supports(type_):
             return provider

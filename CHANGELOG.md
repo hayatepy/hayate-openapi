@@ -4,6 +4,19 @@ All notable changes to hayate-openapi are documented here.
 
 ## Unreleased
 
+### Added
+
+- Bind Hayate's first-party `File` type from typed `multipart/form-data`
+  parameters and emit matching OpenAPI binary schemas without introducing a
+  second upload abstraction.
+- Let typed `Form` markers carry shared `FormDataLimits`; parser limit
+  failures now return and document RFC 9457 `413 Payload Too Large`.
+
+### Changed
+
+- Close typed endpoint `FormData` deterministically after success, validation
+  failure, or handler failure, releasing native temporary upload files.
+
 ## [0.6.0] - 2026-07-27
 
 ### Added

@@ -4,6 +4,15 @@ All notable changes to hayate-openapi are documented here.
 
 ## Unreleased
 
+## [0.4.2] - 2026-07-27
+
+### Fixed
+
+- Defer JSON Schema compiler import and initialization until the first
+  matching request on Emscripten/Pyodide, then cache it. Ordinary Python
+  runtimes retain registration-time schema checks, while Cloudflare Workers
+  no longer request forbidden entropy during module-global evaluation.
+
 ## [0.4.1] - 2026-07-27
 
 ### Fixed

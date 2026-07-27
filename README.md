@@ -69,7 +69,10 @@ Schema conversion goes through a `SchemaProvider` protocol. msgspec and
 pydantic are auto-detected (guarded imports); a plain dict is taken as
 literal JSON Schema Draft 2020-12 and compiled once for runtime validation,
 including supported `format` checks such as UUID. The package depends on
-Hayate and `jsonschema`; msgspec and pydantic remain optional.
+Hayate and `jsonschema`; msgspec and pydantic remain optional. CPython checks
+raw schemas when routes register. Pyodide compiles them on the first matching
+request and caches the validator because Workers forbids extension entropy
+during module-global evaluation.
 
 `validated()` supports the core's six targets: `json`, `form`, `query`,
 `param`, `header`, and `cookie`. The last four expand object properties into

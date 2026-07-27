@@ -149,7 +149,47 @@ OpenApi(
 ```
 
 Use `@describe(security=[])` for an explicitly public operation. For uploads,
-combine `validated("form", schema, media_type="multipart/form-data")` with
+use Hayate's own `File` type in a typed multipart field:
+
+```python
+from hashlib import sha256
+from typing import Annotated
+
+from hayate import File, FormDataLimits
+from hayate_openapi import Form, endpoint
+
+UPLOAD_LIMITS = FormDataLimits(
+    max_body_bytes=10 * 1024 * 1024,
+    max_file_bytes=10 * 1024 * 1024,
+    file_memory_bytes=1024 * 1024,
+)
+
+
+@app.post("/uploads")
+@endpoint(status=201)
+async def upload(
+    file: Annotated[
+        File,
+        Form(media_type="multipart/form-data", limits=UPLOAD_LIMITS),
+    ],
+) -> dict[str, str | int]:
+    digest = sha256()
+    async for chunk in file.stream():
+        digest.update(chunk)
+    return {"name": file.name, "size": file.size, "sha256": digest.hexdigest()}
+```
+
+The same declaration binds the runtime `File`, emits an OpenAPI
+`string`/`binary` part, applies parser limits, and documents both `400` and
+`413` failures. On native streamed requests, files above
+`file_memory_bytes` spill to an unnamed temporary file; Workers remain
+disk-free and bounded. `@endpoint` closes parsed files after the handler
+returns or raises, so consume or persist them during the handler call.
+All typed fields in one form, including fields declared by dependencies, must
+share one media type and one `FormDataLimits` value.
+
+The Context-first surface remains available: combine
+`validated("form", schema, media_type="multipart/form-data")` with
 `binary_file()` in a raw schema.
 
 Schema conversion goes through a `SchemaProvider` protocol. The built-in
@@ -236,11 +276,12 @@ application schema.
 - Responses you declare. Undeclared operations get a bare 200 — the
   generator never invents schemas.
 - Operations with a validator automatically document the 400
-  `application/problem+json` failure the framework actually returns.
+  `application/problem+json` failure the framework actually returns; form
+  operations also document parser-limit failures as 413.
 - Cookie, Bearer, and OAuth 2.0 security requirements, including combined
   route middleware requirements.
-- JSON, URL-encoded, and multipart request bodies, including binary file
-  parts.
+- JSON, URL-encoded, and multipart request bodies, including typed binary
+  `File` parts with shared resource limits.
 - Explicit typed endpoint parameters, including request fields declared by
   cached sub-dependencies, and validated return annotations.
 

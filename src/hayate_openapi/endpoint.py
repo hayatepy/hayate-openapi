@@ -18,11 +18,19 @@ from typing import (
     overload,
 )
 
-from hayate import Context, HTTPException, Response
+from hayate import (
+    Context,
+    FormDataError,
+    FormDataLimitError,
+    FormDataLimits,
+    HTTPException,
+    Response,
+)
 
 from .parameters import Body, Cookie, Depends, Form, Header, Path, Query, RequestMarker
 from .providers import (
     SchemaProvider,
+    _contains_file,
     converter_for,
     default_providers,
     dump_with,
@@ -87,6 +95,10 @@ class _RequestState:
     def __init__(self) -> None:
         self.body: Any = _MISSING
         self.form: Any = _MISSING
+
+    async def close(self) -> None:
+        if self.form is not _MISSING:
+            await self.form.close()
 
 
 def _split_marker(annotation: Any) -> tuple[Any, RequestMarker | Depends | None]:
@@ -226,6 +238,19 @@ def _compile_callable(
                 f"typed form field {parameter.name!r} has unsupported media type "
                 f"{marker.media_type!r}"
             )
+        if (
+            isinstance(marker, Form)
+            and marker.limits is not None
+            and not isinstance(marker.limits, FormDataLimits)
+        ):
+            raise TypeError(
+                f"typed form field {parameter.name!r} limits must be FormDataLimits or None"
+            )
+        if _contains_file(type_) and (
+            not isinstance(marker, Form)
+            or _base_media_type(marker.media_type) != "multipart/form-data"
+        ):
+            raise TypeError("hayate.File values require a multipart/form-data Form marker")
         provider = resolve(providers, type_)
         target = _target(marker)
         if target in {"param", "header", "cookie"} and _is_multi_value(type_):
@@ -255,9 +280,12 @@ def _compile_callable(
         raise TypeError("a typed endpoint may declare only one JSON body")
     if bodies and forms:
         raise TypeError("a typed endpoint cannot mix JSON body and form fields")
-    form_media_types = {cast(Form, binding.marker).media_type for binding in forms}
+    form_markers = [cast(Form, binding.marker) for binding in forms]
+    form_media_types = {marker.media_type for marker in form_markers}
     if len(form_media_types) > 1:
         raise TypeError("all typed form fields must use the same media type")
+    if form_markers and any(marker.limits != form_markers[0].limits for marker in form_markers[1:]):
+        raise TypeError("all typed form fields must use the same FormDataLimits")
 
     compiled = _CompiledCallable(
         fn=fn,
@@ -284,9 +312,20 @@ async def _raw_value(c: Context, binding: TypedBinding, state: _RequestState) ->
         return state.body
     if binding.target == "form":
         if state.form is _MISSING:
+            marker = cast(Form, binding.marker)
             try:
-                state.form = await c.req.form_data()
-            except Exception as exc:
+                state.form = (
+                    await c.req.form_data()
+                    if marker.limits is None
+                    else await c.req.form_data(marker.limits)
+                )
+            except FormDataLimitError as exc:
+                raise HTTPException(
+                    413,
+                    title="Payload Too Large",
+                    detail=str(exc),
+                ) from exc
+            except (FormDataError, TypeError) as exc:
                 raise HTTPException(
                     400,
                     title="Validation failed",
@@ -441,6 +480,8 @@ def endpoint(
         return_type = hints.get("return", inspect.signature(handler).return_annotation)
         response_provider: SchemaProvider | None = None
         response_schema_type: Any | None = None
+        if return_type is not _EMPTY and _contains_file(return_type):
+            raise TypeError("hayate.File is only supported as a typed Form input")
         if return_type is not _EMPTY and return_type is not Response:
             if isinstance(return_type, type) and issubclass(return_type, Response):
                 response_schema_type = None
@@ -458,17 +499,21 @@ def endpoint(
 
         @wraps(handler)
         async def wrapped(c: Context) -> Response:
-            result = await _call(compiled, c, _RequestState(), {})
-            if isinstance(result, Response):
-                return result
-            if status == 204:
-                if result is not None:
-                    raise TypeError("a 204 typed endpoint must return None or Response")
-                return c.body(None, status=204)
-            if response_provider is not None and response_schema_type is not None:
-                validated = response_provider.converter(response_schema_type)(result)
-                result = dump_with(response_provider, response_schema_type, validated)
-            return c.json(result, status=status)
+            state = _RequestState()
+            try:
+                result = await _call(compiled, c, state, {})
+                if isinstance(result, Response):
+                    return result
+                if status == 204:
+                    if result is not None:
+                        raise TypeError("a 204 typed endpoint must return None or Response")
+                    return c.body(None, status=204)
+                if response_provider is not None and response_schema_type is not None:
+                    validated = response_provider.converter(response_schema_type)(result)
+                    result = dump_with(response_provider, response_schema_type, validated)
+                return c.json(result, status=status)
+            finally:
+                await state.close()
 
         setattr(wrapped, TYPED_BINDINGS_ATTR, compiled.request_bindings)
         if response_provider is not None and response_schema_type is not None:

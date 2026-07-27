@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from typing import Annotated, TypedDict
 from uuid import UUID, uuid4
 
 import msgspec
 import pytest
-from hayate import Context, Hayate
+from hayate import Context, File, FormDataLimits, Hayate
 from openapi_spec_validator import validate
 from pydantic import BaseModel, Field
 
@@ -224,6 +225,130 @@ async def test_typed_form_fields_bind_and_document_one_request_body():
     }
 
 
+async def test_typed_multipart_file_spools_binds_documents_and_closes():
+    app = Hayate()
+    captured: list[File] = []
+    payload = b"typed upload" * 512
+    boundary = "hayate-openapi-test"
+    body = (
+        (
+            f"--{boundary}\r\n"
+            'Content-Disposition: form-data; name="title"\r\n\r\n'
+            "Quarterly report\r\n"
+            f"--{boundary}\r\n"
+            'Content-Disposition: form-data; name="file"; filename="report.txt"\r\n'
+            "Content-Type: text/plain\r\n\r\n"
+        ).encode()
+        + payload
+        + f"\r\n--{boundary}--\r\n".encode()
+    )
+    limits = FormDataLimits(
+        max_body_bytes=len(body),
+        max_file_bytes=len(payload),
+        file_memory_bytes=256,
+    )
+
+    @app.post("/upload")
+    @endpoint
+    async def upload(
+        title: Annotated[
+            str,
+            Form(
+                media_type="multipart/form-data",
+                description="Display title",
+                limits=limits,
+            ),
+        ],
+        file: Annotated[File, Form(media_type="multipart/form-data", limits=limits)],
+    ) -> dict[str, int | str | bool]:
+        captured.append(file)
+        chunks = [chunk async for chunk in file.stream(257)]
+        return {
+            "title": title,
+            "name": file.name,
+            "type": file.type,
+            "size": file.size,
+            "spooled": file.spooled,
+            "matches": b"".join(chunks) == payload,
+        }
+
+    async def chunked() -> AsyncIterator[bytes]:
+        for offset in range(0, len(body), 113):
+            yield body[offset : offset + 113]
+
+    response = await app.request(
+        "/upload",
+        method="POST",
+        headers={"content-type": f"multipart/form-data; boundary={boundary}"},
+        body=chunked(),
+    )
+
+    assert response.status == 200
+    assert await response.json() == {
+        "title": "Quarterly report",
+        "name": "report.txt",
+        "type": "text/plain",
+        "size": len(payload),
+        "spooled": True,
+        "matches": True,
+    }
+    assert len(captured) == 1
+    assert captured[0].closed is True
+
+    document = OpenApi(app, title="Typed upload", version="1").generate()
+    operation = document["paths"]["/upload"]["post"]
+    schema = operation["requestBody"]["content"]["multipart/form-data"]["schema"]
+    assert schema["properties"]["file"] == {
+        "type": "string",
+        "format": "binary",
+    }
+    assert schema["properties"]["title"] == {
+        "type": "string",
+        "description": "Display title",
+    }
+    assert operation["responses"]["413"]["description"] == "Payload Too Large"
+    validate(document)
+
+
+async def test_typed_multipart_file_limit_returns_413_without_calling_handler():
+    app = Hayate()
+    called = False
+    boundary = "bounded"
+    body = (
+        f"--{boundary}\r\n"
+        'Content-Disposition: form-data; name="file"; filename="large.bin"\r\n\r\n'
+        "too-large\r\n"
+        f"--{boundary}--\r\n"
+    ).encode()
+    limits = FormDataLimits(
+        max_body_bytes=len(body),
+        max_file_bytes=4,
+        file_memory_bytes=2,
+    )
+
+    @app.post("/bounded")
+    @endpoint
+    async def bounded(
+        file: Annotated[File, Form(media_type="multipart/form-data", limits=limits)],
+    ) -> dict[str, str]:
+        nonlocal called
+        called = True
+        return {"name": file.name}
+
+    response = await app.request(
+        "/bounded",
+        method="POST",
+        headers={"content-type": f"multipart/form-data; boundary={boundary}"},
+        body=body,
+    )
+    problem = await response.json()
+
+    assert response.status == 413
+    assert problem["title"] == "Payload Too Large"
+    assert "max_file_bytes" in problem["detail"]
+    assert called is False
+
+
 async def test_pydantic_and_msgspec_constraints_work_for_scalar_parameters():
     app = Hayate()
 
@@ -369,6 +494,23 @@ def test_ambiguous_typed_signatures_fail_at_registration():
     first.__annotations__["value"] = Annotated[str, marker]
     with pytest.raises(TypeError, match="dependency cycle"):
         endpoint(first)
+
+    first_limits = FormDataLimits(max_body_bytes=10)
+    second_limits = FormDataLimits(max_body_bytes=20)
+    with pytest.raises(TypeError, match="same FormDataLimits"):
+
+        @endpoint
+        async def conflicting_form_limits(
+            first: Annotated[str, Form(limits=first_limits)],
+            second: Annotated[str, Form(limits=second_limits)],
+        ):
+            return first, second
+
+    with pytest.raises(TypeError, match="multipart/form-data"):
+
+        @endpoint
+        async def urlencoded_file(file: Annotated[File, Form()]):
+            return file.name
 
 
 @pytest.mark.parametrize(

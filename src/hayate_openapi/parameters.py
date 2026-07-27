@@ -6,6 +6,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
+from hayate import FormDataLimits
+
 
 @dataclass(frozen=True, slots=True)
 class Constraints:
@@ -35,6 +37,7 @@ class Form:
     alias: str | None = None
     media_type: str = "application/x-www-form-urlencoded"
     description: str | None = None
+    limits: FormDataLimits | None = None
 
 
 @dataclass(frozen=True, slots=True)

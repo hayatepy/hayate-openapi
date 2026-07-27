@@ -92,6 +92,10 @@ hayate 本体:  app.routes(0.8 で公開)/ validator / URLPattern
 - **却下**: ルート登録の独自ラッパー(`openapi.get(...)`)— 二重の登録 API は
   house style「本体への変更要求ゼロ → ただし本体の責務は本体へ」の精神に反する。
   ルート列挙は本体の責務として昇格させた。
+- **追加判断(0.7)**: multipart upload は本体の `File` と
+  `FormDataLimits` をそのまま使う。optional package 独自の upload 型は作らない。
+  `@endpoint` は handler 終了時に parsed form を close し、native temporary file の
+  lifecycle を request binding と同じ範囲に閉じる。
 
 ### 3.2 SchemaProvider(決定)
 
@@ -174,6 +178,7 @@ class SchemaProvider(Protocol):
 | v0.4 | **完了(2026-07-27)**: `param` / `header` / `cookie` validator の OpenAPI parameter 投影、route/schema 整合性検証、version drift gate | PyPI hayate 0.12.0 のみで 37 tests、OpenAPI 3.1 validator、openapi-typescript 7.13、strict mypy/ruff ✅ |
 | v0.5 | **完了(2026-07-27)**: `Annotated` typed endpoint、request-scope dependency graph、stdlib provider、response validation | Python 3.12–3.14、OpenAPI validator、openapi-typescript、candidate wheel の実 Workerd typed/raw contract ✅ |
 | v0.6 | **完了(2026-07-27)**: dependency-free `Constraints` metadata、数値境界・文字列長・pattern の runtime/OpenAPI 共通契約 | Pydantic/msgspec なしの実 Workerd で query coercion、範囲違反 400、OpenAPI keywords を一周 |
+| v0.7 | **実装中(2026-07-27)**: typed `File` multipart binding、共有 `FormDataLimits`、自動 cleanup、413 契約 | core の streamed native spool と Workers bounded parser を同じ annotation/OpenAPI schema から駆動 |
 | v1.0 | API 凍結 | 本体 v1.0 より後 |
 
 ### 決定済み(2026-07-23)

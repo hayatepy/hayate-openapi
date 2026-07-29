@@ -80,6 +80,11 @@ def generate_typescript_client(
         _operation_types(operations),
         _client_interface(operations),
         _RUNTIME_HELPERS,
+        (
+            _MULTIPART_HELPERS
+            if any(operation.body_media_type == "multipart/form-data" for operation in operations)
+            else ""
+        ),
         _client_factory(operations),
     ]
     return "\n\n".join(section.rstrip() for section in sections if section) + "\n"
@@ -643,34 +648,6 @@ function encodeSearchValues(values: unknown): URLSearchParams {
   return search;
 }
 
-function appendFormValue(form: FormData, name: string, value: unknown): void {
-  if (value === undefined) {
-    return;
-  }
-  if (Array.isArray(value)) {
-    for (const item of value) {
-      appendFormValue(form, name, item);
-    }
-    return;
-  }
-  if (typeof Blob !== "undefined" && value instanceof Blob) {
-    form.append(name, value);
-    return;
-  }
-  form.append(name, String(value));
-}
-
-function encodeMultipart(values: unknown): FormData {
-  if (typeof values !== "object" || values === null || Array.isArray(values)) {
-    throw new TypeError("Hayate multipart input must be an object");
-  }
-  const form = new FormData();
-  for (const [name, value] of Object.entries(values)) {
-    appendFormValue(form, name, value);
-  }
-  return form;
-}
-
 async function buildHeaders(
   options: HayateClientOptions,
   input: InputRecord,
@@ -705,4 +682,34 @@ function setContentType(headers: Headers, mediaType: string): void {
   if (!headers.has("content-type")) {
     headers.set("content-type", mediaType);
   }
+}"""
+
+
+_MULTIPART_HELPERS = """\
+function appendFormValue(form: FormData, name: string, value: unknown): void {
+  if (value === undefined) {
+    return;
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      appendFormValue(form, name, item);
+    }
+    return;
+  }
+  if (typeof Blob !== "undefined" && value instanceof Blob) {
+    form.append(name, value);
+    return;
+  }
+  form.append(name, String(value));
+}
+
+function encodeMultipart(values: unknown): FormData {
+  if (typeof values !== "object" || values === null || Array.isArray(values)) {
+    throw new TypeError("Hayate multipart input must be an object");
+  }
+  const form = new FormData();
+  for (const [name, value] of Object.entries(values)) {
+    appendFormValue(form, name, value);
+  }
+  return form;
 }"""

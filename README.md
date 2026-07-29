@@ -10,7 +10,7 @@ schemas from validators or explicit typed parameters, and response schemas
 from one decorator. No implicit body/query guessing and no schema-library
 lock-in.
 
-> **Status: alpha (0.6.x).** The emitted OpenAPI 3.1.1 document passes
+> **Status: alpha (0.8.x).** The emitted OpenAPI 3.1.1 document passes
 > `openapi-spec-validator` and feeds `openapi-typescript` 7.13 for end-to-end
 > TypeScript types in a locked CI interoperability gate. The internal design
 > memo (Japanese, per project convention) lives in [DESIGN.md](DESIGN.md).
@@ -215,19 +215,62 @@ Header schemas use the lowercase names exposed by Fetch; model aliases such as
 `Accept`, `Content-Type`, and `Authorization` header parameters are rejected
 instead of emitting fields the specification ignores.
 
-TypeScript types, the recommended recipe:
+Generate TypeScript types and the first-party callable client:
 
 ```sh
-python -m hayate_openapi main:app --title API --version 1.0.0 -o openapi.json
+python -m hayate_openapi main:app \
+  --title API \
+  --version 1.0.0 \
+  --output openapi.json \
+  --typescript-client src/api-client.ts \
+  --typescript-types-import ./api-types.js
 npx openapi-typescript openapi.json -o src/api-types.ts
 ```
 
-The repository continuously runs the same flow against a representative app:
+The generated client imports only `openapi-typescript`'s `paths` type. Its
+runtime has no package dependency: it uses the platform Fetch, URL, Headers,
+URLSearchParams, FormData, and Blob APIs. Every documented operation becomes a
+method keyed by its `operationId`:
+
+```ts
+import { createHayateClient } from "./api-client.js";
+
+const api = createHayateClient({ baseUrl: "https://api.example.com/v1" });
+const response = await api.post_typed_books_book_id({
+  path: { book_id: "018f47a6-42d2-7f5a-a724-35d7d230ad42" },
+  query: { notify: true },
+  json: { title: "Typed contracts" },
+});
+
+if (response.status === 201) {
+  const book = await response.json(); // status-discriminated response type
+}
+```
+
+Path, query, header, cookie, JSON, URL-encoded, and multipart values are typed
+from the emitted OpenAPI document. Generation fails when a document asks for a
+serialization the runtime does not implement, including ambiguous request
+media types, object-valued parameters, custom form encodings, nested form
+values, or non-JSON response bodies.
+
+Cookie parameters are for server-side Fetch runtimes. Browsers control the
+`Cookie` header themselves; use `credentials` for browser-managed cookies.
+Cookie arrays are rejected because
+[OpenAPI 3.1 Appendix D](https://spec.openapis.org/oas/v3.1.1.html#appendix-d-serializing-headers-and-cookies)
+notes that form-style multi-value serialization does not match the
+semicolon-delimited Cookie header.
+
+The repository continuously validates, generates, strictly compiles, and runs
+the same flow against a representative application:
 
 ```sh
 npm ci --ignore-scripts
 scripts/check_interoperability.sh
 ```
+
+That gate starts a real Hayate ASGI process and executes path/query/JSON,
+multipart, and form/header/cookie round trips with the compiled generated
+client.
 
 The generator deliberately emits OpenAPI 3.1.1. Although
 [OpenAPI 3.2.0](https://spec.openapis.org/oas/v3.2.0.html) is published,

@@ -19,8 +19,9 @@ from .security import (
     oauth2_authorization_code_security,
 )
 from .tags import binary_file, describe, validated
+from .typescript import generate_typescript_client
 
-__version__ = "0.7.0"
+__version__ = "0.8.0"
 
 __all__ = [
     "Body",
@@ -46,6 +47,7 @@ __all__ = [
     "default_providers",
     "describe",
     "endpoint",
+    "generate_typescript_client",
     "oauth2_authorization_code_security",
     "validated",
 ]

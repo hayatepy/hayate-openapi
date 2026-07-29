@@ -4,6 +4,14 @@ All notable changes to hayate-openapi are documented here.
 
 ## Unreleased
 
+## [0.8.1] - 2026-07-30
+
+### Fixed
+
+- Omit multipart-only serialization helpers from generated clients whose
+  contracts have no multipart operations, keeping strict consumers free of
+  unused-function diagnostics without changing the runtime API.
+
 ## [0.8.0] - 2026-07-30
 
 ### Added

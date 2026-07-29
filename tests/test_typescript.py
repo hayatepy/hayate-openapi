@@ -105,6 +105,16 @@ def test_generates_deterministic_dependency_free_client() -> None:
     assert "const request: RequestInit" in source
 
 
+def test_omits_unused_multipart_helpers() -> None:
+    document = copy.deepcopy(_document())
+    del document["paths"]["/uploads"]
+
+    source = generate_typescript_client(document)
+
+    assert "function encodeMultipart" not in source
+    assert "function appendFormValue" not in source
+
+
 @pytest.mark.parametrize(
     ("mutate", "message"),
     [

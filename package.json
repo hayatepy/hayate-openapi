@@ -3,7 +3,8 @@
   "private": true,
   "description": "Locked tooling for hayate-openapi interoperability checks",
   "devDependencies": {
-    "openapi-typescript": "7.13.0"
+    "openapi-typescript": "7.13.0",
+    "typescript": "5.9.3"
   },
   "overrides": {
     "openapi-typescript": {

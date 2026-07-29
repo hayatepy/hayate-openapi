@@ -5,9 +5,20 @@ from uuid import UUID
 
 import msgspec
 import pydantic
-from hayate import Context, Hayate, Response
+from hayate import Context, File, Hayate, Response
 
-from hayate_openapi import Body, Path, Query, binary_file, describe, endpoint, validated
+from hayate_openapi import (
+    Body,
+    Cookie,
+    Form,
+    Header,
+    Path,
+    Query,
+    binary_file,
+    describe,
+    endpoint,
+    validated,
+)
 
 
 class BookIn(msgspec.Struct):
@@ -34,6 +45,13 @@ class TypedBookOut(TypedDict):
     id: UUID
     title: str
     notify: bool
+
+
+class SessionOut(TypedDict):
+    request_id: str
+    scopes: list[str]
+    theme: str
+    username: str
 
 
 app = Hayate()
@@ -74,8 +92,18 @@ async def search(c: Context) -> Response:
         media_type="multipart/form-data",
     ),
 )
+@describe(status=201)
 async def upload_cover(c: Context) -> Response:
     return c.json({}, status=201)
+
+
+@app.post("/typed-covers")
+@endpoint(status=201)
+async def upload_typed_cover(
+    cover: Annotated[File, Form(media_type="multipart/form-data")],
+    alt: Annotated[str, Form(media_type="multipart/form-data")],
+) -> dict[str, str | int]:
+    return {"alt": alt, "name": cover.name, "size": cover.size}
 
 
 @app.post("/typed-books/:book_id")
@@ -86,3 +114,19 @@ async def create_typed_book(
     notify: Annotated[bool, Query(description="Send a notification")] = False,
 ) -> TypedBookOut:
     return {"id": book_id, "title": book["title"], "notify": notify}
+
+
+@app.post("/sessions")
+@endpoint(status=201, summary="Create a session")
+async def create_session(
+    username: Annotated[str, Form()],
+    scopes: Annotated[list[str], Form()],
+    request_id: Annotated[str, Header(alias="x-request-id")],
+    theme: Annotated[str, Cookie()] = "system",
+) -> SessionOut:
+    return {
+        "request_id": request_id,
+        "scopes": scopes,
+        "theme": theme,
+        "username": username,
+    }

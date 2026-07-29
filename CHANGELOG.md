@@ -4,6 +4,28 @@ All notable changes to hayate-openapi are documented here.
 
 ## Unreleased
 
+## [0.8.0] - 2026-07-30
+
+### Added
+
+- Generate an opt-in, operation-oriented TypeScript client from the same
+  OpenAPI document and `openapi-typescript` `paths` types. The generated
+  runtime uses only platform Fetch, URL, Headers, URLSearchParams, FormData,
+  and Blob APIs.
+- Type path, query, header, cookie, JSON, URL-encoded, and multipart inputs,
+  including binary fields, and return exact-status-discriminated JSON
+  responses.
+- Strictly compile the generated client with TypeScript 5.9 and exercise
+  path/query/JSON, multipart, and form/header/cookie requests against a real
+  Hayate ASGI process in CI.
+
+### Changed
+
+- Reject ambiguous media types, unsupported parameter serialization styles,
+  nested form values, binary parameters, and non-JSON response bodies during
+  generation rather than emitting a client with incorrect wire behavior.
+- Support path-level OpenAPI parameters with operation-level overrides.
+
 ## [0.7.0] - 2026-07-27
 
 ### Added

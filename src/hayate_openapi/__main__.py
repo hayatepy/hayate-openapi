@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 
 from .generate import OpenApi
+from .typescript import generate_typescript_client
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -21,6 +22,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--version", required=True)
     parser.add_argument("--description")
     parser.add_argument("-o", "--output", help="write here instead of stdout")
+    parser.add_argument(
+        "--typescript-client",
+        help="write a dependency-free typed Fetch client here",
+    )
+    parser.add_argument(
+        "--typescript-types-import",
+        default="./api-types.js",
+        help="module imported for openapi-typescript's paths type",
+    )
     args = parser.parse_args(argv)
 
     module_name, _, attribute = args.app.partition(":")
@@ -37,6 +47,12 @@ def main(argv: list[str] | None = None) -> int:
         Path(args.output).write_text(text + "\n", encoding="utf-8")
     else:
         print(text)
+    if args.typescript_client:
+        client = generate_typescript_client(
+            document,
+            types_import=args.typescript_types_import,
+        )
+        Path(args.typescript_client).write_text(client, encoding="utf-8")
     return 0
 
 

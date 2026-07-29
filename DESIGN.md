@@ -154,7 +154,7 @@ class SchemaProvider(Protocol):
 
 | やらないこと | 理由 |
 |---|---|
-| TS / Python クライアント生成 | openapi-typescript 等の成熟ツールに接続するのが役割(roadmap 非目標) |
+| Python クライアント生成 | Python内の同一runtime契約には直接Hayateを使えるため、cross-language境界より優先度が低い |
 | OpenAPI 3.0.x 出力 | JSON Schema 方言が別物。3.1 のみ |
 | webhooks / callbacks / links | 証拠駆動で待つ |
 | renderer asset の package 同梱 | Python wheel と依存グラフを肥大化させず、既定は SRI 固定 CDN、必要なら same-origin self-host |
@@ -178,7 +178,8 @@ class SchemaProvider(Protocol):
 | v0.4 | **完了(2026-07-27)**: `param` / `header` / `cookie` validator の OpenAPI parameter 投影、route/schema 整合性検証、version drift gate | PyPI hayate 0.12.0 のみで 37 tests、OpenAPI 3.1 validator、openapi-typescript 7.13、strict mypy/ruff ✅ |
 | v0.5 | **完了(2026-07-27)**: `Annotated` typed endpoint、request-scope dependency graph、stdlib provider、response validation | Python 3.12–3.14、OpenAPI validator、openapi-typescript、candidate wheel の実 Workerd typed/raw contract ✅ |
 | v0.6 | **完了(2026-07-27)**: dependency-free `Constraints` metadata、数値境界・文字列長・pattern の runtime/OpenAPI 共通契約 | Pydantic/msgspec なしの実 Workerd で query coercion、範囲違反 400、OpenAPI keywords を一周 |
-| v0.7 | **実装中(2026-07-27)**: typed `File` multipart binding、共有 `FormDataLimits`、自動 cleanup、413 契約 | core の streamed native spool と Workers bounded parser を同じ annotation/OpenAPI schema から駆動 |
+| v0.7 | **完了(2026-07-27)**: typed `File` multipart binding、共有 `FormDataLimits`、自動 cleanup、413 契約 | core の streamed native spool と Workers bounded parser を同じ annotation/OpenAPI schema から駆動 |
+| v0.8 | **完了(2026-07-30)**: `openapi-typescript` の `paths` 型を唯一のcross-language契約にする、zero-runtime-dependency TypeScript Fetch client | strict TypeScript compile。path/query/JSON、multipart、form/header/cookie を実ASGIへ往復。未対応serializationは生成時に拒否 |
 | v1.0 | API 凍結 | 本体 v1.0 より後 |
 
 ### 決定済み(2026-07-23)

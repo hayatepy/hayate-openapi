@@ -4,6 +4,13 @@ All notable changes to hayate-openapi are documented here.
 
 ## Unreleased
 
+## [0.8.2] - 2026-07-30
+
+### Changed
+
+- Route package discovery, start, and tested-compatibility links through
+  `hayatepy.dev`, including the PyPI project homepage.
+
 ## [0.8.1] - 2026-07-30
 
 ### Fixed

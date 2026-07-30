@@ -21,7 +21,7 @@ from .security import (
 from .tags import binary_file, describe, validated
 from .typescript import generate_typescript_client
 
-__version__ = "0.8.1"
+__version__ = "0.8.2"
 
 __all__ = [
     "Body",
